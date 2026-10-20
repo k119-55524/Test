@@ -4,18 +4,22 @@ using UnityEngine;
 namespace ScenarioSystem.ActionSources
 {
 	/// <summary>
-	/// Служебный ретранслятор OnTriggerEnter с отдельного коллайдера-зоны.
-	/// Добавляется автоматически источниками, которым нужно слушать несколько зон
-	/// (например SequenceActionSource) — вручную вешать не нужно.
+	/// Передает вход и выход из триггера зоны источнику действия (добавляется автоматически).
 	/// </summary>
 	[DisallowMultipleComponent]
 	public class ZoneTriggerRelay : MonoBehaviour
 	{
 		public event Action<Collider> Entered;
+		public event Action<Collider> Exited;
 
 		private void OnTriggerEnter(Collider other)
 		{
 			Entered?.Invoke(other);
+		}
+
+		private void OnTriggerExit(Collider other)
+		{
+			Exited?.Invoke(other);
 		}
 	}
 }

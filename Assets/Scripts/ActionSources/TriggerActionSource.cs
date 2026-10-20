@@ -3,8 +3,7 @@ using UnityEngine;
 namespace ScenarioSystem.ActionSources
 {
 	/// <summary>
-	/// Источник действия от триггера Unity (OnTriggerEnter).
-	/// Срабатывает, когда игрок (или указанный тег/коллайдер) пересекает границу зоны.
+	/// Источник действия: вход игрока в зону-триггер.
 	/// </summary>
 	[RequireComponent(typeof(Collider))]
 	public class TriggerActionSource : ActionSourceBase
@@ -19,15 +18,9 @@ namespace ScenarioSystem.ActionSources
 		[Tooltip("Текст при срабатывании")]
 		[SerializeField] private string triggerMessage = "Вход в контрольную зону";
 
-		private Collider _collider;
-
 		private void Awake()
 		{
-			_collider = GetComponent<Collider>();
-			if (_collider != null)
-			{
-				_collider.isTrigger = true;
-			}
+			GetComponent<Collider>().isTrigger = true;
 		}
 
 		private void OnTriggerEnter(Collider other)
@@ -40,6 +33,14 @@ namespace ScenarioSystem.ActionSources
 			}
 
 			NotifyAction(treatEnterAsSuccess, triggerMessage);
+		}
+
+		public override bool HoldsInteraction => true;
+
+		private void OnTriggerExit(Collider other)
+		{
+			if (!string.IsNullOrEmpty(requiredTag) && !other.CompareTag(requiredTag)) return;
+			NotifyInteractionEnded();
 		}
 	}
 }

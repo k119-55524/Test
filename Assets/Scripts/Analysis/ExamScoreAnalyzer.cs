@@ -2,26 +2,14 @@ using System;
 using ScenarioSystem.Core;
 using System.Collections.Generic;
 
-namespace ScenarioSystem.Observers.Analysis
+namespace ScenarioSystem.Analysis
 {
 	/// <summary>
-	/// Анализатор результатов для Режима 2 — «Экзамен» (ТЗ п. 4, п. 7).
-	///
-	/// Правила оценивания:
-	/// - Базовый пул = 100 баллов.
-	/// - Штраф за каждый заваленный шаг (Failed) = 10 баллов.
-	/// - Штраф за каждый пропущенный шаг (Skipped) = 5 баллов.
-	/// - Итог = max(0, 100 - сумма штрафов).
-	/// - Нарушения в отчете = заваленные шаги + действия вне очереди + нарушения ТБ.
-	///
-	/// Контрольный пример из ТЗ:
-	/// В группе из 4 шагов два завалены (Failed), оставшиеся два пропущены (Skipped).
-	/// Штраф: 2 * 10 (Failed) + 2 * 5 (Skipped) = 30 баллов.
-	/// Итоговая оценка = 100 - 30 = 70 баллов.
+	/// Оценка экзамена: 100 минус 10 за каждый Failed и 5 за каждый Skipped.
 	/// </summary>
-	public class ExamScoreAnalyzer : ScenarioAnalyzer
+	public class ExamScoreAnalyzer : ScenarioAnalyzerBase
 	{
-		public override string AnalyzerName => "Экзамен (Exam Evaluator)";
+		public override string AnalyzerName => "оценка экзамена";
 
 		public override ScenarioReport Analyze(IReadOnlyList<ScenarioLogEntry> history, int totalStepsInScenario)
 		{
@@ -36,9 +24,8 @@ namespace ScenarioSystem.Observers.Analysis
 			{
 				details.Add("Предупреждение: журнал пуст. Экзамен не пройден.");
 				return new ScenarioReport(
-					ScenarioMode.Exam,
 					AnalyzerName,
-					0, 100, 0, 0, 0, totalStepsInScenario, 0f, details);
+					0, 100, 0, 0, 0, 0, 0f, details);
 			}
 
 			AddDiagnostics(history, ScenarioMode.Exam, details);
@@ -46,6 +33,7 @@ namespace ScenarioSystem.Observers.Analysis
 
 			// Отслеживаем финальный статус каждого шага
 			var finalStepStatuses = new Dictionary<string, StepStatus>();
+			var titles = new Dictionary<string, string>();
 
 			foreach (var entry in history)
 			{
@@ -58,6 +46,8 @@ namespace ScenarioSystem.Observers.Analysis
 
 				if (!string.IsNullOrEmpty(entry.StepId))
 				{
+					if (!string.IsNullOrEmpty(entry.StepTitle)) titles[entry.StepId] = entry.StepTitle;
+
 					if (entry.ResultStatus == StepStatus.Completed ||
 						entry.ResultStatus == StepStatus.Failed ||
 						entry.ResultStatus == StepStatus.Skipped)
@@ -69,19 +59,20 @@ namespace ScenarioSystem.Observers.Analysis
 
 			foreach (var kvp in finalStepStatuses)
 			{
+				string name = titles.TryGetValue(kvp.Key, out var title) ? $"{kvp.Key} {title}" : kvp.Key;
 				switch (kvp.Value)
 				{
 					case StepStatus.Completed:
 						completedCount++;
-						details.Add($"Шаг '{kvp.Key}': Успешно (0 штрафа)");
+						details.Add($"{name}: выполнено → 0");
 						break;
 					case StepStatus.Failed:
 						failedCount++;
-						details.Add($"Шаг '{kvp.Key}': Завален (Failed) -> штраф -10");
+						details.Add($"{name}: провалено → −10");
 						break;
 					case StepStatus.Skipped:
 						skippedCount++;
-						details.Add($"Шаг '{kvp.Key}': Пропущен (Skipped) -> штраф -5");
+						details.Add($"{name}: пропущено → −5");
 						break;
 				}
 			}
@@ -89,10 +80,7 @@ namespace ScenarioSystem.Observers.Analysis
 			int penalties = (failedCount * 10) + (skippedCount * 5);
 			int totalScore = Math.Max(0, 100 - penalties);
 
-			details.Add($"--- ИТОГО --- Штрафы: {penalties} (Failed: -{failedCount * 10}, Skipped: -{skippedCount * 5}) | Итоговый балл: {totalScore}/100");
-
 			return new ScenarioReport(
-				ScenarioMode.Exam,
 				AnalyzerName,
 				totalScore,
 				100,

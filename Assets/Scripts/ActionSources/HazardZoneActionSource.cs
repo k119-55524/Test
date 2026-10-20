@@ -3,19 +3,8 @@ using UnityEngine;
 namespace ScenarioSystem.ActionSources
 {
 	/// <summary>
-	/// Контекстный источник действия №2: «Опасная зона оборудования» (ТЗ п. 3.1).
-	/// Шаг «войти в зону только при нужном состоянии другого объекта».
-	///
-	/// Логика входа игрока в зону:
-	/// | Опасность  | Шаг активен                  | Шаг не активен          |
-	/// | включена   | ошибка шага                  | нарушение ТБ (всегда)   |
-	/// | выключена  | шаг выполнен                 | ничего                  |
-	///
-	/// - Нарушение ТБ фиксируется в любой момент прохождения, даже если шаг уже закрыт
-	///   или отключен правилом «вне очереди».
-	/// - Состояние переключает SetHazardActive(bool): его можно назначить в любом UnityEvent
-	///   инспектора (например, Button.onClick кнопки «Пуск оборудования»).
-	/// - При сбросе сценария восстанавливается начальное состояние из инспектора.
+	/// Источник действия «опасная зона»: при выключенной опасности вход выполняет шаг,
+	/// при включенной — ошибка шага (если он активен) или нарушение ТБ.
 	/// </summary>
 	[RequireComponent(typeof(Collider))]
 	public class HazardZoneActionSource : ActionSourceBase
@@ -35,8 +24,6 @@ namespace ScenarioSystem.ActionSources
 		[SerializeField] private string hazardEntryMessage = "Нарушение ТБ: вход в опасную зону работающего оборудования!";
 
 		private bool _initialHazardActive;
-
-		public bool IsHazardActive => isHazardActive;
 
 		private void Awake()
 		{
@@ -70,6 +57,14 @@ namespace ScenarioSystem.ActionSources
 			{
 				NotifyAction(true, safeEntryMessage);
 			}
+		}
+
+		public override bool HoldsInteraction => true;
+
+		private void OnTriggerExit(Collider other)
+		{
+			if (!string.IsNullOrEmpty(requiredTag) && !other.CompareTag(requiredTag)) return;
+			NotifyInteractionEnded();
 		}
 
 		private void UpdateVisuals()

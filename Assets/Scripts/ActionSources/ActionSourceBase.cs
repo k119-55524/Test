@@ -4,24 +4,12 @@ using UnityEngine;
 namespace ScenarioSystem.ActionSources
 {
 	/// <summary>
-	/// Базовый класс (и контракт) источников действий (ТЗ п. 3.1).
-	///
-	/// Логика архитектуры:
-	/// Реализует общие механизмы включения/выключения, подписки и безопасного вызова событий.
-	/// Наследуясь от этого класса, разработчик нового источника пишет только специфическую
-	/// логику Unity (OnTriggerEnter, OnCollisionEnter, UI callback).
-	///
-	/// Два независимых флага:
-	/// - IsEnabled — источник вообще принимает действия (у неактивного шага может слушать,
-	///   чтобы менеджер зафиксировал действие вне очереди);
-	/// - IsStepActive — шаг сейчас в очереди. Нужен источникам с внутренним состоянием
-	///   (например, шлюз A→B засчитывает зону A только у активного шага).
+	/// Базовый класс источника действия: превращает событие Unity в успех или ошибку шага либо в нарушение ТБ.
 	/// </summary>
 	public abstract class ActionSourceBase : MonoBehaviour
 	{
-		[Header("Базовые настройки источника")]
-		[Tooltip("Разрешено ли срабатывание источника")]
-		[SerializeField] protected bool isSourceEnabled = true;
+		/// <summary>Источник принимает действия игрока. Управляется шагом (EnableSource / DisableSource).</summary>
+		protected bool isSourceEnabled = true;
 
 		/// <summary>
 		/// Действие игрока: (isSuccess — успех или ошибка/нарушение, message — пояснение).
@@ -34,7 +22,17 @@ namespace ScenarioSystem.ActionSources
 		/// </summary>
 		public event Action<string> OnSafetyViolation;
 
-		public bool IsEnabled => isSourceEnabled;
+		/// <summary>
+		/// Длящееся действие игрока закончилось (вышел из зоны, перестал касаться объекта).
+		/// Нужно оформлению, чтобы держать подсветку ошибки, пока действие длится.
+		/// </summary>
+		public event Action OnInteractionEnded;
+
+		/// <summary>
+		/// Действие этого источника длится во времени (зона, касание) и завершается OnInteractionEnded.
+		/// false — мгновенное действие (клик, событие).
+		/// </summary>
+		public virtual bool HoldsInteraction => false;
 
 		/// <summary>Шаг, которому принадлежит источник, сейчас активен (в своей очереди).</summary>
 		public bool IsStepActive { get; private set; }
@@ -62,14 +60,10 @@ namespace ScenarioSystem.ActionSources
 			if (IsStepActive == active) return;
 			IsStepActive = active;
 			if (active) OnStepActivated();
-			else OnStepDeactivated();
 		}
 
 		/// <summary>Шаг вошел в свою очередь. Переопределяется при необходимости.</summary>
 		protected virtual void OnStepActivated() { }
-
-		/// <summary>Шаг вышел из очереди (завершен, завален, пропущен, остановлен).</summary>
-		protected virtual void OnStepDeactivated() { }
 
 		/// <summary>
 		/// Безопасный вызов события для подписчиков (StepInstance).
@@ -77,6 +71,14 @@ namespace ScenarioSystem.ActionSources
 		protected void NotifyAction(bool isSuccess, string message)
 		{
 			OnActionPerformed?.Invoke(isSuccess, message);
+		}
+
+		/// <summary>
+		/// Сообщает, что длящееся действие игрока закончилось.
+		/// </summary>
+		protected void NotifyInteractionEnded()
+		{
+			OnInteractionEnded?.Invoke();
 		}
 
 		/// <summary>

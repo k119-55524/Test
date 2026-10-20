@@ -3,8 +3,7 @@ using UnityEngine;
 namespace ScenarioSystem.ActionSources
 {
 	/// <summary>
-	/// Источник действия от физической коллизии Unity (OnCollisionEnter).
-	/// Срабатывает при физическом ударе или соприкосновении твердых тел (Rigidbody / Collider).
+	/// Источник действия: столкновение игрока с объектом.
 	/// </summary>
 	[RequireComponent(typeof(Collider))]
 	public class CollisionActionSource : ActionSourceBase
@@ -19,15 +18,9 @@ namespace ScenarioSystem.ActionSources
 		[Tooltip("Текст при срабатывании")]
 		[SerializeField] private string collisionMessage = "Физическое столкновение с объектом";
 
-		private Collider _collider;
-
 		private void Awake()
 		{
-			_collider = GetComponent<Collider>();
-			if (_collider != null)
-			{
-				_collider.isTrigger = false;
-			}
+			GetComponent<Collider>().isTrigger = false;
 		}
 
 		private void OnCollisionEnter(Collision collision)
@@ -40,6 +33,14 @@ namespace ScenarioSystem.ActionSources
 			}
 
 			NotifyAction(treatCollisionAsSuccess, collisionMessage);
+		}
+
+		public override bool HoldsInteraction => true;
+
+		private void OnCollisionExit(Collision collision)
+		{
+			if (!string.IsNullOrEmpty(requiredTag) && !collision.gameObject.CompareTag(requiredTag)) return;
+			NotifyInteractionEnded();
 		}
 	}
 }

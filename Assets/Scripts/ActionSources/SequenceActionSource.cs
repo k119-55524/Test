@@ -4,15 +4,7 @@ using UnityEngine;
 namespace ScenarioSystem.ActionSources
 {
 	/// <summary>
-	/// Контекстный источник действия №1: «Последовательность зон / Шлюз» (ТЗ п. 3.1).
-	///
-	/// Логика:
-	/// - Пока шаг активен, вход в Зону A лишь запоминается (шаг еще не выполнен).
-	/// - Вход в Зону B после A — успех; вход в B без A — ошибка.
-	/// - Отметка в Зоне A сбрасывается при каждой активации шага, поэтому заход в A
-	///   до наступления очереди не засчитывается.
-	/// Зоны — обычные коллайдеры (isTrigger выставляется автоматически), достаточно
-	/// перетащить их в поля Zone A / Zone B.
+	/// Источник действия «шлюз»: сначала зона A, затем зона B; вход в B без A — ошибка.
 	/// </summary>
 	public class SequenceActionSource : ActionSourceBase
 	{
@@ -32,21 +24,27 @@ namespace ScenarioSystem.ActionSources
 
 		private bool _hasVisitedZoneA;
 
-		public bool HasVisitedZoneA => _hasVisitedZoneA;
-
 		private void Awake()
 		{
-			BindZone(zoneA, OnZoneAEntered);
-			BindZone(zoneB, OnZoneBEntered);
+			BindZone(zoneA, OnZoneAEntered, null);
+			BindZone(zoneB, OnZoneBEntered, OnZoneBExited);
 		}
 
-		private static void BindZone(Collider zone, Action<Collider> handler)
+		public override bool HoldsInteraction => true;
+
+		private void BindZone(Collider zone, Action<Collider> onEnter, Action<Collider> onExit)
 		{
 			if (zone == null) return;
 			zone.isTrigger = true;
 			var relay = zone.GetComponent<ZoneTriggerRelay>();
 			if (relay == null) relay = zone.gameObject.AddComponent<ZoneTriggerRelay>();
-			relay.Entered += handler;
+			relay.Entered += onEnter;
+			if (onExit != null) relay.Exited += onExit;
+		}
+
+		private void OnZoneBExited(Collider other)
+		{
+			if (IsPlayer(other)) NotifyInteractionEnded();
 		}
 
 		private bool IsPlayer(Collider other) =>

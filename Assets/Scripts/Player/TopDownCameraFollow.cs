@@ -3,8 +3,7 @@ using UnityEngine;
 namespace ScenarioSystem.Player
 {
 	/// <summary>
-	/// Камера от третьего лица: держится за спиной цели со смещением offset
-	/// (в локальных осях цели, поворачивается вместе с ней) и смотрит на точку над ее пивотом.
+	/// Камера за спиной цели.
 	/// </summary>
 	public class TopDownCameraFollow : MonoBehaviour
 	{

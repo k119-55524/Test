@@ -1,152 +1,151 @@
 using System;
 using System.Collections.Generic;
 using ScenarioSystem.Core;
-using ScenarioSystem.Observers.Analysis;
-using ScenarioSystem.Observers.Logging;
+using ScenarioSystem.Analysis;
+using ScenarioSystem.Logging;
 using UnityEngine;
 
 namespace ScenarioSystem.Manager
 {
 	/// <summary>
-	/// Менеджер сценария: ведет прохождение по списку «группы → линии → тесты».
-	///
-	/// Логика:
-	/// 1. Менеджер знает тесты только по своему списку. При подготовке прохождения передает
-	///    каждому тесту ссылку на себя (StepInstance.Bind); дальше тест сам сообщает о действиях
-	///    игрока (ReportStepAction) и о нарушениях ТБ (ReportSafetyViolation).
-	/// 2. Цикл прохождения один для обоих режимов: линии идут строго по очереди, тесты линии
-	///    активируются вместе и выполняются в любом порядке; следующая линия — когда закрыты все.
-	/// 3. Режим задает только два правила:
-	///    - ошибка на активном тесте: Обучение — тест остается активным (повтор),
-	///      Экзамен — тест получает Failed и закрывается;
-	///    - порог нарушений группы: только Экзамен — при достижении оставшиеся тесты группы
-	///      получают Skipped, начинается следующая группа. В Обучении группы идут подряд как одна.
-	/// 4. Журнал (ScenarioLogger) и анализаторы (ScenarioAnalyzer) — необязательные компоненты
-	///    на этом же объекте: повешены — работают. Оценку считает анализатор по готовому журналу,
-	///    поэтому прохождение можно переоценить другим анализатором без перезапуска (ReEvaluate).
+	/// Ведет прохождение сценария: этапы по очереди, шаги этапа в любом порядке.
+	/// Применяет правила режима и пишет события в логгер; в конце запускает анализатор.
 	/// </summary>
 	public class ScenarioManager : MonoBehaviour
 	{
 		[Header("Режим")]
-		[Tooltip("Training — обучение (повтор после ошибки), Exam — экзамен (Failed/Skipped, порог группы)")]
+		[Tooltip("Training — обучение (повтор после ошибки), Exam — экзамен (Failed/Skipped, порог нарушений этапа)")]
 		[SerializeField] private ScenarioMode currentMode = ScenarioMode.Training;
 
-		[Tooltip("Действие на тесте вне его очереди: нарушение или игнорировать (тест может переопределить у себя)")]
+		[Tooltip("Действие на шаге вне его очереди: нарушение или игнорировать (шаг может переопределить у себя)")]
 		[SerializeField] private OutOfOrderPolicy outOfOrderPolicy = OutOfOrderPolicy.RejectAsViolation;
 
 		[Header("Сценарий")]
-		[Tooltip("Группы → линии → тесты. Линии выполняются по очереди, тесты линии — в любом порядке")]
+		[Tooltip("Общее название сценария: выводится при старте и в итоге («Старт обучения «…»»)")]
+		[SerializeField] private string scenarioTitle = "Сценарий";
+
+		[Tooltip("Этапы (группы) выполняются строго по очереди; тесты внутри этапа — все сразу, в любом порядке")]
 		[SerializeField] private List<ScenarioGroup> groups = new();
 
-		[Header("Журнал и оценка")]
-		[Tooltip("Журнал прохождения. Если пусто — берется компонент ScenarioLogger с этого объекта")]
-		[SerializeField] private ScenarioLogger journal;
+		[Header("Логгер и анализатор")]
+		[Tooltip("Логгер (компонент с IScenarioLogger): ведет журнал событий. Если пусто — берется логгер с этого объекта")]
+		[SerializeField] private MonoBehaviour logger;
 
-		[Tooltip("Основной анализатор. Если пусто — первый ScenarioAnalyzer с этого объекта")]
-		[SerializeField] private ScenarioAnalyzer analyzer;
+		[Tooltip("Анализатор (компонент с IScenarioAnalyzer) итоговой оценки в режиме Обучение. Пусто — оценка не рассчитывается")]
+		[SerializeField] private MonoBehaviour trainingAnalyzer;
+
+		[Tooltip("Анализатор (компонент с IScenarioAnalyzer) итоговой оценки в режиме Экзамен. Пусто — оценка не рассчитывается")]
+		[SerializeField] private MonoBehaviour examAnalyzer;
 
 		// Состояние прохождения
 		private float _startTime;
 		private bool _isRunning;
 		private int _groupIndex;
-		private int _lineIndex;
 		private int _groupViolations;
 		private readonly HashSet<StepInstance> _activeSteps = new();
 
-		/// <summary>Прохождение завершено; отчет основного анализатора (null, если анализатор не задан).</summary>
-		public event Action<ScenarioReport> OnScenarioCompleted;
+		private IScenarioLogger Logger => logger as IScenarioLogger;
 
-		/// <summary>Сообщение для игрока: успех, ошибка с подсказкой, нарушение.</summary>
-		public event Action<string> OnNotificationMessage;
-
-		/// <summary>Изменился набор активных тестов или состояние прохождения.</summary>
-		public event Action OnStateChanged;
-
-		public ScenarioMode CurrentMode => currentMode;
-		public bool IsRunning => _isRunning;
-		public IReadOnlyCollection<StepInstance> ActiveSteps => _activeSteps;
-		public IReadOnlyList<ScenarioGroup> Groups => groups;
-		public int CurrentGroupIndex => _groupIndex;
-		public int GroupViolationsCount => _groupViolations;
-		public ScenarioLogger Journal => journal;
-		public ScenarioAnalyzer Analyzer => analyzer;
-
-		/// <summary>Все анализаторы на объекте (для повторной оценки).</summary>
-		public ScenarioAnalyzer[] Analyzers => GetComponents<ScenarioAnalyzer>();
+		/// <summary>Анализатор итоговой оценки для текущего режима.</summary>
+		private IScenarioAnalyzer ActiveAnalyzer => (IsExam ? examAnalyzer : trainingAnalyzer) as IScenarioAnalyzer;
 
 		private bool IsExam => currentMode == ScenarioMode.Exam;
+		private string CurrentGroupName =>
+			_groupIndex < groups.Count && groups[_groupIndex] != null ? groups[_groupIndex].GroupName : string.Empty;
 		private float Elapsed => Time.time - _startTime;
-		private int LogGroupIndex => IsExam ? _groupIndex : 0;
+		private string ModeName => IsExam ? "экзамена" : "обучения";
 
-		private IReadOnlyList<ScenarioLogEntry> JournalEntries =>
-			journal != null ? journal.Entries : (IReadOnlyList<ScenarioLogEntry>)Array.Empty<ScenarioLogEntry>();
+		private IReadOnlyList<ScenarioLogEntry> LoggedEntries =>
+			Logger != null ? Logger.Entries : (IReadOnlyList<ScenarioLogEntry>)Array.Empty<ScenarioLogEntry>();
 
 		private void Awake()
 		{
-			if (journal == null) journal = GetComponent<ScenarioLogger>();
-			if (analyzer == null) analyzer = GetComponent<ScenarioAnalyzer>();
+			if (logger == null) logger = GetComponent<IScenarioLogger>() as MonoBehaviour;
+		}
+
+		private void OnValidate()
+		{
+			// Unity создает новые элементы списка с нулями — порог этапа по умолчанию 2
+			foreach (var group in groups) group?.ApplyDefaults();
+
+			// В поля принимаются только компоненты с нужным интерфейсом
+			logger = RequireInterface<IScenarioLogger>(logger, "Logger");
+			trainingAnalyzer = RequireInterface<IScenarioAnalyzer>(trainingAnalyzer, "Training Analyzer");
+			examAnalyzer = RequireInterface<IScenarioAnalyzer>(examAnalyzer, "Exam Analyzer");
+		}
+
+		private MonoBehaviour RequireInterface<T>(MonoBehaviour component, string fieldName)
+		{
+			if (component == null || component is T) return component;
+			Debug.LogWarning($"[ScenarioManager] {component.GetType().Name} не реализует {typeof(T).Name} — поле {fieldName} очищено.", this);
+			return null;
 		}
 
 		private void Start()
 		{
-			// Готовим тесты, но не стартуем автоматически — запуск из UI
-			PrepareSteps();
+			// Прохождение стартует сразу при запуске сцены в выбранном режиме
+			StartScenario();
 		}
 
 		// ---------- Управление прохождением ----------
 
-		/// <summary>Переключает режим (останавливает текущее прохождение).</summary>
-		public void SetMode(ScenarioMode newMode)
-		{
-			if (_isRunning) StopScenario();
-			currentMode = newMode;
-			PrepareSteps();
-			OnStateChanged?.Invoke();
-		}
-
 		/// <summary>Запускает сценарий с начала.</summary>
-		public void StartScenario()
+		private void StartScenario()
 		{
 			PrepareSteps();
-			if (journal != null) journal.Clear();
+			Logger?.Clear();
 			_startTime = Time.time;
 			_isRunning = true;
 
 			WriteLog(new ScenarioLogEntry(
 				0f, "", "Сценарий", ScenarioEventType.ScenarioStarted, StepStatus.Pending,
-				message: $"Запуск сценария: режим '{currentMode}', вне очереди: {outOfOrderPolicy}",
+				message: $"Старт {ModeName} «{scenarioTitle}»",
 				extraData: new Dictionary<string, string>
 				{
-					{ ScenarioLogEntry.KeyMode, currentMode.ToString() },
-					{ ScenarioLogEntry.KeyTotalSteps, CountSteps().ToString() }
+					{ ScenarioLogEntry.KeyMode, currentMode.ToString() }
 				}));
 
-			ActivateNextLine();
-			OnStateChanged?.Invoke();
+			ActivateNextGroup();
+		}
+
+		[ContextMenu("Старт сценария")]
+		private void StartFromContextMenu()
+		{
+			if (!Application.isPlaying)
+			{
+				Debug.LogWarning("[ScenarioManager] Запуск сценария доступен только в режиме Play.", this);
+				return;
+			}
+			StartScenario();
+		}
+
+		[ContextMenu("Стоп сценария")]
+		private void StopFromContextMenu()
+		{
+			if (Application.isPlaying) StopScenario();
 		}
 
 		/// <summary>Останавливает прохождение без формирования отчета.</summary>
-		public void StopScenario()
+		private void StopScenario()
 		{
 			_isRunning = false;
 			foreach (var step in _activeSteps) step.DeactivateStep();
 			_activeSteps.Clear();
-			OnStateChanged?.Invoke();
 		}
 
 		/// <summary>
-		/// Повторная оценка завершенного прохождения другим анализатором (ТЗ п. 5), без перезапуска.
+		/// Повторная оценка завершенного прохождения другим анализатором, без перезапуска.
 		/// </summary>
-		public ScenarioReport ReEvaluate(ScenarioAnalyzer otherAnalyzer)
+		public ScenarioReport ReEvaluate(IScenarioAnalyzer otherAnalyzer)
 		{
 			if (otherAnalyzer == null) return null;
-			return otherAnalyzer.Analyze(JournalEntries, CountSteps());
+			return otherAnalyzer.Analyze(LoggedEntries, CountSteps());
 		}
 
-		// ---------- Сообщения от тестов ----------
+		// ---------- Сообщения от шагов ----------
 
 		/// <summary>
-		/// Тест сообщает о действии игрока. isSuccess — выполнено ли условие теста.
+		/// Шаг сообщает о действии игрока. isSuccess — выполнено ли условие шага.
 		/// </summary>
 		public void ReportStepAction(StepInstance step, bool isSuccess, string message)
 		{
@@ -164,27 +163,23 @@ namespace ScenarioSystem.Manager
 			{
 				HandleStepError(step, message);
 			}
-
-			OnStateChanged?.Invoke();
 		}
 
 		/// <summary>
-		/// Тест сообщает о нарушении ТБ, не связанном с его выполнением (например, вход в
+		/// Шаг сообщает о нарушении ТБ, не связанном с его выполнением (например, вход в
 		/// работающую опасную зону). Засчитывается в любой момент прохождения.
 		/// </summary>
 		public void ReportSafetyViolation(StepInstance step, string message)
 		{
 			if (!_isRunning || step == null) return;
 
-			string text = $"[Нарушение ТБ] {step.StepTitle}: {message}";
 			WriteLog(new ScenarioLogEntry(
 				Elapsed, step.StepId, step.StepTitle,
 				ScenarioEventType.HazardViolation, step.CurrentStatus,
-				step.AttemptCount, LogGroupIndex, message));
+				step.AttemptCount, message));
 
-			OnNotificationMessage?.Invoke(text);
+			step.NotifyError();
 			RegisterGroupViolation();
-			OnStateChanged?.Invoke();
 		}
 
 		private void HandleOutOfOrderAction(StepInstance step, string message)
@@ -192,13 +187,12 @@ namespace ScenarioSystem.Manager
 			if (step.CurrentStatus != StepStatus.Pending) return;
 			if (step.ResolveOutOfOrderPolicy(outOfOrderPolicy) == OutOfOrderPolicy.IgnoreUntilActive) return;
 
-			string text = $"[Нарушение порядка] Тест '{step.StepTitle}' еще не доступен. {message}";
 			WriteLog(new ScenarioLogEntry(
 				Elapsed, step.StepId, step.StepTitle,
 				ScenarioEventType.OutOfOrderViolation, StepStatus.Pending,
-				step.AttemptCount, LogGroupIndex, text));
+				step.AttemptCount, $"не завершён этап «{CurrentGroupName}»"));
 
-			OnNotificationMessage?.Invoke(text);
+			step.NotifyError();
 			RegisterGroupViolation();
 		}
 
@@ -211,38 +205,35 @@ namespace ScenarioSystem.Manager
 			WriteLog(new ScenarioLogEntry(
 				Elapsed, step.StepId, step.StepTitle,
 				ScenarioEventType.StepCompleted, StepStatus.Completed,
-				attempt, LogGroupIndex, message));
+				attempt, message));
 
-			OnNotificationMessage?.Invoke($"[Успех] {step.StepTitle}: {message}");
 			CloseStepAndContinue();
 		}
 
 		private void HandleStepError(StepInstance step, string message)
 		{
 			int attempt = step.RegisterAttempt();
+			step.NotifyError();
 
 			if (!IsExam)
 			{
-				// Обучение: тест остается активным, игрок повторяет; остальные активные тесты не трогаем
+				// Обучение: шаг остается активным, игрок повторяет; остальные активные шаги не трогаем
 				WriteLog(new ScenarioLogEntry(
 					Elapsed, step.StepId, step.StepTitle,
 					ScenarioEventType.StepFailed, StepStatus.Active,
-					attempt, LogGroupIndex, $"{message} | Подсказка: {step.HintOnFailure}"));
+					attempt, $"{message}. Подсказка: {step.HintOnFailure}"));
 
-				OnNotificationMessage?.Invoke($"[Ошибка, попытка {attempt}] {message}\nПодсказка: {step.HintOnFailure}");
 				return;
 			}
 
-			// Экзамен: тест получает Failed без повтора, ошибка идет в порог группы
+			// Экзамен: шаг получает Failed без повтора, ошибка идет в порог этапа
 			step.MarkFailed();
 			_activeSteps.Remove(step);
 
 			WriteLog(new ScenarioLogEntry(
 				Elapsed, step.StepId, step.StepTitle,
 				ScenarioEventType.StepFailed, StepStatus.Failed,
-				attempt, LogGroupIndex, message));
-
-			OnNotificationMessage?.Invoke($"[Экзамен: тест не сдан] {step.StepTitle}: {message}");
+				attempt, message));
 
 			if (!RegisterGroupViolation())
 			{
@@ -253,8 +244,8 @@ namespace ScenarioSystem.Manager
 		// ---------- Ход прохождения ----------
 
 		/// <summary>
-		/// Учитывает нарушение в текущей группе. Экзамен: при достижении порога закрывает группу
-		/// (оставшиеся тесты — Skipped) и возвращает true. Обучение: порога нет, всегда false.
+		/// Учитывает нарушение в текущем этапе. Экзамен: при достижении порога закрывает этап
+		/// (оставшиеся шаги — Skipped) и возвращает true. Обучение: порога нет, всегда false.
 		/// </summary>
 		private bool RegisterGroupViolation()
 		{
@@ -264,22 +255,16 @@ namespace ScenarioSystem.Manager
 			var group = groups[_groupIndex];
 			if (group == null || _groupViolations < group.ViolationThreshold) return false;
 
-			string text = $"Порог нарушений в группе '{group.GroupName}' достигнут " +
-				$"({_groupViolations}/{group.ViolationThreshold}). Оставшиеся тесты группы пропускаются.";
+			string text = $"Этап {_groupIndex + 1} «{group.GroupName}»: порог нарушений {_groupViolations}/{group.ViolationThreshold} — оставшиеся шаги пропущены";
 
 			WriteLog(new ScenarioLogEntry(
 				Elapsed, "", group.GroupName,
 				ScenarioEventType.GroupSkipped, StepStatus.Skipped,
-				0, _groupIndex, text));
+				0, text));
 
-			OnNotificationMessage?.Invoke(text);
-
-			for (int i = _lineIndex; i < group.Stages.Count; i++)
+			foreach (var test in group.Tests)
 			{
-				var line = group.Stages[i];
-				if (line == null) continue;
-
-				foreach (var step in line.Steps)
+				foreach (var step in StepsOf(test))
 				{
 					if (step == null) continue;
 					if (step.CurrentStatus != StepStatus.Pending && step.CurrentStatus != StepStatus.Active) continue;
@@ -288,32 +273,35 @@ namespace ScenarioSystem.Manager
 					WriteLog(new ScenarioLogEntry(
 						Elapsed, step.StepId, step.StepTitle,
 						ScenarioEventType.StepSkipped, StepStatus.Skipped,
-						step.AttemptCount, _groupIndex,
-						"Пропущен: достигнут порог нарушений группы"));
+						step.AttemptCount,
+						"порог нарушений этапа"));
 				}
 			}
 
 			_activeSteps.Clear();
 			_groupIndex++;
-			_lineIndex = 0;
 			_groupViolations = 0;
-			ActivateNextLine();
+			ActivateNextGroup();
 			return true;
 		}
 
-		/// <summary>Тест закрыт: если в линии не осталось активных тестов — переходим к следующей.</summary>
+		/// <summary>Шаг закрыт: если в текущем этапе не осталось активных шагов — переходим к следующему этапу.</summary>
 		private void CloseStepAndContinue()
 		{
 			if (_activeSteps.Count > 0) return;
-			_lineIndex++;
-			ActivateNextLine();
+
+			var group = groups[_groupIndex];
+			if (group != null) LogGroupCompleted(group);
+
+			_groupIndex++;
+			_groupViolations = 0;
+			ActivateNextGroup();
 		}
 
 		/// <summary>
-		/// Активирует ближайшую линию, в которой есть невыполненные тесты.
-		/// Пустые линии пропускаются, после последней группы прохождение завершается.
+		/// Активирует все шаги ближайшего непустого этапа; после последнего этапа завершает прохождение.
 		/// </summary>
-		private void ActivateNextLine()
+		private void ActivateNextGroup()
 		{
 			_activeSteps.Clear();
 
@@ -326,53 +314,66 @@ namespace ScenarioSystem.Manager
 				}
 
 				var group = groups[_groupIndex];
-				if (group == null || _lineIndex >= group.Stages.Count)
+				if (group != null)
 				{
-					if (IsExam && group != null)
+					AnnounceGroup(group);
+
+					foreach (var test in group.Tests)
 					{
-						WriteLog(new ScenarioLogEntry(
-							Elapsed, "", group.GroupName,
-							ScenarioEventType.GroupCompleted, StepStatus.Completed,
-							0, _groupIndex, $"Группа '{group.GroupName}' завершена"));
+						foreach (var step in StepsOf(test))
+						{
+							if (step.CurrentStatus == StepStatus.Pending) ActivateStep(step);
+						}
 					}
 
-					_groupIndex++;
-					_lineIndex = 0;
-					_groupViolations = 0;
-					continue;
+					if (_activeSteps.Count > 0) return;
+
+					LogGroupCompleted(group);
 				}
 
-				var line = group.Stages[_lineIndex];
-				if (line != null)
-				{
-					foreach (var step in line.Steps)
-					{
-						if (step == null || step.CurrentStatus != StepStatus.Pending) continue;
-						ActivateStep(step);
-					}
-				}
-
-				if (_activeSteps.Count > 0)
-				{
-					OnStateChanged?.Invoke();
-					return;
-				}
-
-				_lineIndex++;
+				_groupIndex++;
+				_groupViolations = 0;
 			}
+		}
+
+		private void LogGroupCompleted(ScenarioGroup group)
+		{
+			WriteLog(new ScenarioLogEntry(
+				Elapsed, "", group.GroupName,
+				ScenarioEventType.GroupCompleted, StepStatus.Completed,
+				0, $"Этап {_groupIndex + 1} «{group.GroupName}» завершён"));
 		}
 
 		private void ActivateStep(StepInstance step)
 		{
-			// Подсветка активных тестов — только в обучении
-			step.ActivateStep(showHighlight: !IsExam);
+			step.ActivateStep();
 			_activeSteps.Add(step);
 
 			WriteLog(new ScenarioLogEntry(
 				Elapsed, step.StepId, step.StepTitle,
 				ScenarioEventType.StepActivated, StepStatus.Active,
-				step.AttemptCount, LogGroupIndex,
-				$"Активирован тест: {step.Description}"));
+				step.AttemptCount,
+				step.Description));
+		}
+
+		/// <summary>
+		/// Запись «начат этап» с его составом: названия шагов по порядку, со сдвигом на 4 символа.
+		/// </summary>
+		private void AnnounceGroup(ScenarioGroup group)
+		{
+			var text = new System.Text.StringBuilder($"Этап {_groupIndex + 1} «{group.GroupName}»");
+			foreach (var test in group.Tests)
+			{
+				foreach (var step in StepsOf(test))
+				{
+					text.Append($"\n    {step.StepTitle}");
+				}
+			}
+
+			WriteLog(new ScenarioLogEntry(
+				Elapsed, "", group.GroupName,
+				ScenarioEventType.GroupStarted, StepStatus.Active,
+				0, text.ToString()));
 		}
 
 		private void FinishScenario()
@@ -383,64 +384,71 @@ namespace ScenarioSystem.Manager
 			WriteLog(new ScenarioLogEntry(
 				Elapsed, "", "Сценарий",
 				ScenarioEventType.ScenarioFinished, StepStatus.Completed,
-				message: "Сценарий завершен"));
+				message: $"Конец {ModeName} «{scenarioTitle}»"));
 
-			ScenarioReport report = null;
-			if (analyzer != null)
+			var activeAnalyzer = ActiveAnalyzer;
+			if (activeAnalyzer != null)
 			{
-				report = analyzer.Analyze(JournalEntries, CountSteps());
+				var report = activeAnalyzer.Analyze(LoggedEntries, CountSteps());
+				Debug.Log($"Итог {ModeName} «{scenarioTitle}»: {report}\n    {string.Join("\n    ", report.Details)}", this);
 			}
 			else
 			{
-				Debug.LogWarning("[ScenarioManager] Анализатор не задан — итоговая оценка не рассчитана.", this);
+				Debug.LogWarning($"[ScenarioManager] Анализатор для режима {currentMode} не задан — итоговая оценка не рассчитана.", this);
 			}
-
-			OnScenarioCompleted?.Invoke(report);
-			OnStateChanged?.Invoke();
 		}
 
 		// ---------- Подготовка ----------
 
 		/// <summary>
-		/// Сбрасывает состояние прохождения и все тесты из списка, привязывает их к менеджеру.
+		/// Сбрасывает состояние прохождения и все тесты из списка, привязывает их к менеджеру
+		/// и назначает идентификаторы по порядку обхода списка: step_01, step_02…
 		/// </summary>
 		private void PrepareSteps()
 		{
 			_isRunning = false;
 			_groupIndex = 0;
-			_lineIndex = 0;
 			_groupViolations = 0;
 			_activeSteps.Clear();
 
+			int number = 0;
 			foreach (var step in EnumerateSteps())
 			{
-				step.Bind(this);
+				number++;
+				step.Bind(this, $"step_{number:00}");
 				bool listenWhileInactive =
 					step.ResolveOutOfOrderPolicy(outOfOrderPolicy) == OutOfOrderPolicy.RejectAsViolation;
 				step.ResetStep(listenWhileInactive);
 			}
 		}
 
-		/// <summary>Уникальные тесты сценария в порядке их первого появления в списке.</summary>
+		/// <summary>Уникальные шаги сценария в порядке их первого появления в списке.</summary>
 		private IEnumerable<StepInstance> EnumerateSteps()
 		{
 			var seen = new HashSet<StepInstance>();
 			foreach (var group in groups)
 			{
 				if (group == null) continue;
-				foreach (var line in group.Stages)
+				foreach (var test in group.Tests)
 				{
-					if (line == null) continue;
-					foreach (var step in line.Steps)
+					foreach (var step in StepsOf(test))
 					{
-						if (step != null && seen.Add(step)) yield return step;
+						if (seen.Add(step)) yield return step;
 					}
 				}
 			}
 		}
 
-		/// <summary>Количество уникальных тестов в сценарии.</summary>
-		public int CountSteps()
+		/// <summary>
+		/// Шаги теста: StepInstance на самом объекте и на всех дочерних (включая выключенные).
+		/// </summary>
+		private StepInstance[] StepsOf(GameObject test)
+		{
+			return test != null ? test.GetComponentsInChildren<StepInstance>(true) : Array.Empty<StepInstance>();
+		}
+
+		/// <summary>Количество уникальных шагов в сценарии.</summary>
+		private int CountSteps()
 		{
 			int count = 0;
 			foreach (var _ in EnumerateSteps()) count++;
@@ -449,7 +457,7 @@ namespace ScenarioSystem.Manager
 
 		private void WriteLog(ScenarioLogEntry entry)
 		{
-			if (journal != null) journal.Log(entry);
+			Logger?.Log(entry);
 		}
 	}
 }

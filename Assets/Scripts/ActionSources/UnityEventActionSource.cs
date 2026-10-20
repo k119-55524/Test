@@ -3,12 +3,7 @@ using UnityEngine;
 namespace ScenarioSystem.ActionSources
 {
 	/// <summary>
-	/// Источник действия от кастомного события Unity (UnityEvent).
-	///
-	/// Логика:
-	/// Точка входа — публичный метод TriggerAction(). Его выбирают в любом UnityEvent инспектора
-	/// (Button.onClick, событие двери, таймера, рычага, Animation Event), связывая шаг сценария
-	/// со сторонним компонентом без написания кода на C#.
+	/// Источник действия: вызов TriggerAction() из любого UnityEvent.
 	/// </summary>
 	public class UnityEventActionSource : ActionSourceBase
 	{

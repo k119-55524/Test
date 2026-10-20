@@ -4,8 +4,7 @@ using UnityEngine.UI;
 namespace ScenarioSystem.ActionSources
 {
 	/// <summary>
-	/// Источник действия от стандартной кнопки Unity UI (Button).
-	/// Поддерживает как Screen Space UI, так и World Space кнопки на терминалах в 3D.
+	/// Источник действия: нажатие UI-кнопки.
 	/// </summary>
 	public class ButtonActionSource : ActionSourceBase
 	{

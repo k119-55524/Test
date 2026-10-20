@@ -1,26 +1,16 @@
 using ScenarioSystem.Core;
 using System.Collections.Generic;
 
-namespace ScenarioSystem.Observers.Analysis
+namespace ScenarioSystem.Analysis
 {
 	/// <summary>
-	/// Анализатор результатов для Режима 1 — «Тренировка» (ТЗ п. 4, п. 7).
-	///
-	/// Правила оценивания:
-	/// - 10 баллов: шаг выполнен с первой попытки.
-	/// - 5 баллов: шаг выполнен со второй попытки.
-	/// - 0 баллов: шаг выполнен с третьей и последующих попыток (или не выполнен).
-	/// - Максимальная оценка = 10 * количество шагов.
-	///
-	/// Контрольный пример из ТЗ:
-	/// Шаг 1 с 1-й попытки (10), Шаг 2 со 2-й попытки (5), Шаг 3 с 3-й попытки (0).
-	/// Итого по этим трем шагам = 15 баллов.
+	/// Оценка обучения: 10 / 5 / 0 баллов за шаг по номеру попытки.
 	/// </summary>
-	public class TrainingScoreAnalyzer : ScenarioAnalyzer
+	public class TrainingScoreAnalyzer : ScenarioAnalyzerBase
 	{
-		public override string AnalyzerName => "Обучение (Training Evaluator)";
+		public override string AnalyzerName => "оценка обучения";
 
-		public static int ScoreForAttempt(int attempt) => attempt switch
+		private int ScoreForAttempt(int attempt) => attempt switch
 		{
 			1 => 10,
 			2 => 5,
@@ -35,7 +25,7 @@ namespace ScenarioSystem.Observers.Analysis
 			{
 				details.Add("Предупреждение: журнал пуст. Прохождение не зафиксировано.");
 				return new ScenarioReport(
-					ScenarioMode.Training, AnalyzerName,
+					AnalyzerName,
 					0, totalStepsInScenario * 10,
 					0, 0, 0, 0, 0f, details);
 			}
@@ -85,26 +75,24 @@ namespace ScenarioSystem.Observers.Analysis
 			foreach (var stepId in stepOrder)
 			{
 				violationsPerStep.TryGetValue(stepId, out int violations);
-				string title = string.IsNullOrEmpty(titles[stepId]) ? stepId : titles[stepId];
+				string title = string.IsNullOrEmpty(titles[stepId]) ? stepId : $"{stepId} {titles[stepId]}";
 
 				if (completedAttempt.TryGetValue(stepId, out int attempt))
 				{
 					int score = ScoreForAttempt(attempt);
 					totalScore += score;
-					details.Add($"Шаг '{title}': выполнен с попытки {attempt}, нарушений {violations} -> +{score}");
+					details.Add($"{title}: попытка {attempt}, нарушений {violations} → +{score}");
 				}
 				else
 				{
-					details.Add($"Шаг '{title}': не выполнен, нарушений {violations} -> +0");
+					details.Add($"{title}: не выполнено, нарушений {violations} → 0");
 				}
 			}
 
 			int completedCount = completedAttempt.Count;
 			int maxScore = (totalStepsInScenario > 0 ? totalStepsInScenario : stepOrder.Count) * 10;
-			details.Add($"--- ИТОГО --- {totalScore}/{maxScore}");
 
 			return new ScenarioReport(
-				ScenarioMode.Training,
 				AnalyzerName,
 				totalScore,
 				maxScore,

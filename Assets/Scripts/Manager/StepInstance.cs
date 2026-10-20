@@ -1,3 +1,4 @@
+using System;
 using ScenarioSystem.ActionSources;
 using ScenarioSystem.Core;
 using UnityEngine;
@@ -5,26 +6,12 @@ using UnityEngine;
 namespace ScenarioSystem.Manager
 {
 	/// <summary>
-	/// Автономный контроллер отдельного шага/теста на сцене или префабе.
-	///
-	/// Логика архитектуры:
-	/// 1. Локальная автономия: префаб сам знает свои интерактивные компоненты (ActionSource),
-	///    тексты подсказок и текущий визуальный статус (активен/неактивен/подсвечен).
-	/// 2. Связь с менеджером: при старте ScenarioManager передает шагу ссылку на себя (Bind).
-	///    Шаг слушает свой ActionSource и сам сообщает менеджеру о действии игрока
-	///    (ReportStepAction) или о нарушении ТБ (ReportSafetyViolation). Активен ли шаг,
-	///    менеджер видит по IsActive.
-	/// 3. Действия вне очереди: шаг хранит собственное правило (или берет общее из ScenarioManager).
-	///    При RejectAsViolation источник слушает и до очереди — менеджер фиксирует нарушение;
-	///    при IgnoreUntilActive источник выключен до активации шага.
-	/// 4. Попытки считает менеджер (RegisterAttempt) и только для действий на активном шаге.
+	/// Шаг сценария: слушает свой источник действия и сообщает менеджеру о действиях игрока.
+	/// Пока шаг активен, он подсвечен контуром.
 	/// </summary>
 	public class StepInstance : MonoBehaviour
 	{
-		[Header("Идентификация шага")]
-		[Tooltip("Уникальный идентификатор шага (например 'step_button_start')")]
-		[SerializeField] private string stepId = "step_id";
-
+		[Header("Описание шага")]
 		[Tooltip("Человекочитаемое название задания")]
 		[SerializeField] private string stepTitle = "Задание шага";
 
@@ -40,29 +27,43 @@ namespace ScenarioSystem.Manager
 		[Tooltip("UseScenarioDefault — как задано в ScenarioManager. RejectAsViolation — действие до очереди считается нарушением. IgnoreUntilActive — шаг не принимает действия до своей очереди.")]
 		[SerializeField] private OutOfOrderOverride outOfOrderOverride = OutOfOrderOverride.UseScenarioDefault;
 
-		[Header("Связи и визуал")]
+		[Header("Связи")]
 		[Tooltip("Источник действия шага (кнопка, триггер, коллизия, шлюз). Если пусто, ищется на этом же объекте.")]
 		[SerializeField] private ActionSourceBase actionSource;
 
-		[Tooltip("Объект подсветки (маркер, галочка или световой контур для режима Обучения)")]
-		[SerializeField] private GameObject highlightMarker;
+		[Header("Контур активного шага")]
+		[Tooltip("Материал контура (общий M_Outline): цвет и толщина настраиваются в нем — сразу для всех шагов")]
+		[SerializeField] private Material outlineMaterial;
 
-		[Tooltip("Рендерер для подсветки цветом (опционально)")]
-		[SerializeField] private Renderer visualRenderer;
-
-		[Header("Цвета подсветки")]
-		[SerializeField] private Color normalColor = Color.gray;
-		[SerializeField] private Color activeColor = Color.green;
-		[SerializeField] private Color completedColor = Color.cyan;
-		[SerializeField] private Color failedColor = Color.red;
-
-		public string StepId => stepId;
+		/// <summary>Идентификатор шага: назначается менеджером автоматически по порядку в списке (step_01, step_02…).</summary>
+		public string StepId { get; private set; } = string.Empty;
 		public string StepTitle => stepTitle;
 		public string Description => description;
 		public string HintOnFailure => hintOnFailure;
 		public bool IsActive { get; private set; }
 		public StepStatus CurrentStatus { get; private set; } = StepStatus.Pending;
-		public int AttemptCount { get; private set; } = 0;
+		public int AttemptCount { get; private set; }
+
+		/// <summary>
+		/// Статус шага изменился. Для внутреннего оформления префаба
+		/// (например, StepStatusColor красит площадку зоны).
+		/// </summary>
+		public event Action<StepStatus> OnStatusChanged;
+
+		/// <summary>
+		/// На шаге зафиксирована ошибка или нарушение (неверное действие, вне очереди, нарушение ТБ).
+		/// Для оформления префаба (например, StepStatusColor — красная вспышка).
+		/// </summary>
+		public event Action OnError;
+
+		/// <summary>
+		/// Длящееся действие игрока на шаге закончилось (вышел из зоны, перестал касаться).
+		/// Для оформления префаба: подсветку ошибки можно держать до этого события.
+		/// </summary>
+		public event Action OnInteractionEnded;
+
+		/// <summary>Действие шага длится во времени (зона, касание), а не мгновенное (клик, событие).</summary>
+		public bool HoldsInteraction => actionSource != null && actionSource.HoldsInteraction;
 
 		/// <summary>
 		/// Итоговое правило для действий вне очереди с учетом индивидуальной настройки шага.
@@ -75,13 +76,16 @@ namespace ScenarioSystem.Manager
 		};
 
 		private ScenarioManager _manager;
+		private StepOutline _outline;
 
 		/// <summary>
-		/// Привязывает шаг к менеджеру сценария. Вызывается менеджером при подготовке прохождения.
+		/// Привязывает шаг к менеджеру сценария и назначает ему идентификатор.
+		/// Вызывается менеджером при подготовке прохождения.
 		/// </summary>
-		public void Bind(ScenarioManager manager)
+		public void Bind(ScenarioManager manager, string stepId)
 		{
 			_manager = manager;
+			StepId = stepId;
 		}
 
 		private void Awake()
@@ -91,12 +95,7 @@ namespace ScenarioSystem.Manager
 				actionSource = GetComponent<ActionSourceBase>();
 			}
 
-			if (visualRenderer == null)
-			{
-				visualRenderer = GetComponent<Renderer>();
-			}
-
-			SetVisualState(StepStatus.Pending, showHighlight: false);
+			_outline = new StepOutline(gameObject, outlineMaterial);
 		}
 
 		private void OnEnable()
@@ -105,6 +104,7 @@ namespace ScenarioSystem.Manager
 			{
 				actionSource.OnActionPerformed += HandleActionFromSource;
 				actionSource.OnSafetyViolation += HandleSafetyViolation;
+				actionSource.OnInteractionEnded += HandleInteractionEnded;
 			}
 		}
 
@@ -114,33 +114,33 @@ namespace ScenarioSystem.Manager
 			{
 				actionSource.OnActionPerformed -= HandleActionFromSource;
 				actionSource.OnSafetyViolation -= HandleSafetyViolation;
+				actionSource.OnInteractionEnded -= HandleInteractionEnded;
 			}
 		}
 
 		/// <summary>
 		/// Активирует шаг в сценарии.
 		/// </summary>
-		/// <param name="showHighlight">Включать ли подсветку (в Обучении — true, в Экзамене — false).</param>
-		public void ActivateStep(bool showHighlight)
+		public void ActivateStep()
 		{
 			IsActive = true;
-			CurrentStatus = StepStatus.Active;
+			SetStatus(StepStatus.Active);
 			if (actionSource != null)
 			{
 				actionSource.EnableSource();
 				actionSource.SetStepActive(true);
 			}
-			SetVisualState(StepStatus.Active, showHighlight);
+			_outline?.SetVisible(true);
 		}
 
 		/// <summary>
-		/// Деактивирует шаг при переходе к следующему этапу.
+		/// Деактивирует шаг при остановке прохождения.
 		/// </summary>
 		public void DeactivateStep()
 		{
 			IsActive = false;
 			StopSource();
-			SetVisualState(CurrentStatus, showHighlight: false);
+			_outline?.SetVisible(false);
 		}
 
 		/// <summary>
@@ -149,9 +149,9 @@ namespace ScenarioSystem.Manager
 		public void MarkCompleted()
 		{
 			IsActive = false;
-			CurrentStatus = StepStatus.Completed;
+			SetStatus(StepStatus.Completed);
 			StopSource();
-			SetVisualState(StepStatus.Completed, showHighlight: false);
+			_outline?.SetVisible(false);
 		}
 
 		/// <summary>
@@ -160,20 +160,20 @@ namespace ScenarioSystem.Manager
 		public void MarkFailed()
 		{
 			IsActive = false;
-			CurrentStatus = StepStatus.Failed;
+			SetStatus(StepStatus.Failed);
 			StopSource();
-			SetVisualState(StepStatus.Failed, showHighlight: false);
+			_outline?.SetVisible(false);
 		}
 
 		/// <summary>
-		/// Помечает шаг как пропущенный из-за превышения порога ошибок в группе (Skipped в Экзамене).
+		/// Помечает шаг как пропущенный из-за порога нарушений этапа (Skipped в Экзамене).
 		/// </summary>
 		public void MarkSkipped()
 		{
 			IsActive = false;
-			CurrentStatus = StepStatus.Skipped;
+			SetStatus(StepStatus.Skipped);
 			StopSource();
-			SetVisualState(StepStatus.Skipped, showHighlight: false);
+			_outline?.SetVisible(false);
 		}
 
 		/// <summary>
@@ -186,7 +186,7 @@ namespace ScenarioSystem.Manager
 		public void ResetStep(bool listenWhileInactive)
 		{
 			IsActive = false;
-			CurrentStatus = StepStatus.Pending;
+			SetStatus(StepStatus.Pending);
 			AttemptCount = 0;
 			if (actionSource != null)
 			{
@@ -195,7 +195,7 @@ namespace ScenarioSystem.Manager
 				if (listenWhileInactive) actionSource.EnableSource();
 				else actionSource.DisableSource();
 			}
-			SetVisualState(StepStatus.Pending, showHighlight: false);
+			_outline?.SetVisible(false);
 		}
 
 		/// <summary>
@@ -214,6 +214,20 @@ namespace ScenarioSystem.Manager
 			actionSource.DisableSource();
 		}
 
+		/// <summary>
+		/// Сообщает шагу, что на нем зафиксирована ошибка. Вызывается менеджером.
+		/// </summary>
+		public void NotifyError()
+		{
+			OnError?.Invoke();
+		}
+
+		private void SetStatus(StepStatus status)
+		{
+			CurrentStatus = status;
+			OnStatusChanged?.Invoke(status);
+		}
+
 		private void HandleActionFromSource(bool isSuccess, string message)
 		{
 			if (_manager != null) _manager.ReportStepAction(this, isSuccess, message);
@@ -224,26 +238,9 @@ namespace ScenarioSystem.Manager
 			if (_manager != null) _manager.ReportSafetyViolation(this, message);
 		}
 
-		private void SetVisualState(StepStatus status, bool showHighlight)
+		private void HandleInteractionEnded()
 		{
-			if (highlightMarker != null)
-			{
-				highlightMarker.SetActive(showHighlight && status == StepStatus.Active);
-			}
-
-			if (visualRenderer != null)
-			{
-				Color targetColor = status switch
-				{
-					StepStatus.Active => activeColor,
-					StepStatus.Completed => completedColor,
-					StepStatus.Failed => failedColor,
-					StepStatus.Skipped => Color.black,
-					_ => normalColor
-				};
-
-				visualRenderer.material.color = targetColor;
-			}
+			OnInteractionEnded?.Invoke();
 		}
 	}
 }

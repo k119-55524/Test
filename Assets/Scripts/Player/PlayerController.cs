@@ -4,11 +4,7 @@ using UnityEngine.InputSystem;
 namespace ScenarioSystem.Player
 {
 	/// <summary>
-	/// Управление персонажем от третьего лица.
-	/// - Движение мыши по горизонтали поворачивает персонажа влево/вправо.
-	/// - W/S или стрелки вверх/вниз — движение вперед/назад относительно взгляда персонажа.
-	/// - A/D или стрелки влево/вправо — шаг вбок (стрейф) без поворота.
-	/// Тег «Player», по которому фильтруют источники действий, задан на объекте в сцене.
+	/// Управление персонажем: мышь — поворот, W/S — вперед/назад, A/D — шаг вбок.
 	/// </summary>
 	[RequireComponent(typeof(Rigidbody))]
 	[RequireComponent(typeof(CapsuleCollider))]
@@ -17,8 +13,12 @@ namespace ScenarioSystem.Player
 		[SerializeField] private float moveSpeed = 6f;
 		[SerializeField] private float mouseSensitivity = 0.2f;
 
+		// Сколько кадров пропускать движение мыши после старта или возврата фокуса
+		private const int MouseSettleFrames = 3;
+
 		private Rigidbody _rb;
 		private float _yaw;
+		private int _skipMouseFrames = MouseSettleFrames;
 
 		private void Awake()
 		{
@@ -29,10 +29,20 @@ namespace ScenarioSystem.Player
 		private void Update()
 		{
 			var mouse = Mouse.current;
-			if (mouse != null)
+			if (mouse == null) return;
+
+			if (_skipMouseFrames > 0)
 			{
-				_yaw += mouse.delta.ReadValue().x * mouseSensitivity;
+				_skipMouseFrames--;
+				return;
 			}
+
+			_yaw += mouse.delta.ReadValue().x * mouseSensitivity;
+		}
+
+		private void OnApplicationFocus(bool hasFocus)
+		{
+			if (hasFocus) _skipMouseFrames = MouseSettleFrames;
 		}
 
 		private void FixedUpdate()

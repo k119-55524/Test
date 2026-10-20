@@ -3,16 +3,10 @@ using System.Collections.Generic;
 namespace ScenarioSystem.Core
 {
 	/// <summary>
-	/// Итоговый структурированный отчет прохождения сценария.
-	/// Формируется анализатором (ScenarioAnalyzer) на основе журнала (ScenarioLogger.Entries).
-	///
-	/// Логика архитектуры:
-	/// Отделяет математику подсчета очков от процесса игры.
-	/// Позволяет сериализовать результат, выводить в UI или экспортировать во внешнюю аналитику.
+	/// Итог оценки прохождения, который возвращает анализатор.
 	/// </summary>
 	public class ScenarioReport
 	{
-		public ScenarioMode EvaluatedMode { get; }
 		public string AnalyzerName { get; }
 		public int TotalScore { get; }
 		public int MaxScore { get; }
@@ -24,7 +18,6 @@ namespace ScenarioSystem.Core
 		public IReadOnlyList<string> Details { get; }
 
 		public ScenarioReport(
-			ScenarioMode mode,
 			string analyzerName,
 			int totalScore,
 			int maxScore,
@@ -35,7 +28,6 @@ namespace ScenarioSystem.Core
 			float durationSeconds,
 			List<string> details = null)
 		{
-			EvaluatedMode = mode;
 			AnalyzerName = analyzerName;
 			TotalScore = totalScore;
 			MaxScore = maxScore;
@@ -49,7 +41,8 @@ namespace ScenarioSystem.Core
 
 		public override string ToString()
 		{
-			return $"[{AnalyzerName}] Score: {TotalScore}/{MaxScore} (Completed: {CompletedStepsCount}, Failed: {FailedStepsCount}, Skipped: {SkippedStepsCount}, Violations: {TotalViolations}) Time: {DurationSeconds:F1}s";
+			return $"{TotalScore}/{MaxScore} ({AnalyzerName}) — выполнено {CompletedStepsCount}, провалено {FailedStepsCount}, " +
+				$"пропущено {SkippedStepsCount}, нарушений {TotalViolations}, время {DurationSeconds:F1} с";
 		}
 	}
 }
