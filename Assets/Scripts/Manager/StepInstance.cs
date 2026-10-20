@@ -62,6 +62,9 @@ namespace ScenarioSystem.Manager
 		/// </summary>
 		public event Action OnInteractionEnded;
 
+		/// <summary>Тип источника действия шага: Trigger, Collision, Button, UnityEvent, Sequence, HazardZone.</summary>
+		public string SourceType => actionSource != null ? actionSource.GetType().Name.Replace("ActionSource", "") : string.Empty;
+
 		/// <summary>Действие шага длится во времени (зона, касание), а не мгновенное (клик, событие).</summary>
 		public bool HoldsInteraction => actionSource != null && actionSource.HoldsInteraction;
 

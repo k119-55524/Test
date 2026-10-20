@@ -14,7 +14,9 @@ namespace ScenarioSystem.Manager
 
 		public StepOutline(GameObject root, Material material)
 		{
-			_renderers = root.GetComponentsInChildren<MeshRenderer>(true);
+			// Только рендереры с обычным мешем (без текста и т.п.)
+			_renderers = System.Array.FindAll(root.GetComponentsInChildren<MeshRenderer>(true),
+				renderer => renderer.GetComponent<MeshFilter>() != null);
 			_material = material;
 
 			if (_material == null)
