@@ -17,6 +17,9 @@ namespace ScenarioSystem
 			_ => 0
 		};
 
+		// Нарушения шага — только если были
+		private static string ViolationsText(int violations) => violations > 0 ? $", нарушений: {violations}" : "";
+
 		// Сумма баллов по шагам; максимум — 10 × число шагов
 		public override ScenarioReport Analyze(IReadOnlyList<ScenarioLogEntry> history, int totalStepsInScenario)
 		{
@@ -82,10 +85,10 @@ namespace ScenarioSystem
 				{
 					int score = ScoreForAttempt(attempt);
 					totalScore += score;
-					details.Add($"{title}: попытка {attempt}, нарушений {violations} → +{score}");
+					details.Add($"{title}: попытка {attempt}, +{score} баллов{ViolationsText(violations)}");
 				}
 				else
-					details.Add($"{title}: не выполнено, нарушений {violations} → 0");
+					details.Add($"{title}: не выполнено, 0 баллов{ViolationsText(violations)}");
 			}
 
 			int completedCount = completedAttempt.Count;

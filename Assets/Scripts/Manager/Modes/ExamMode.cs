@@ -1,29 +1,36 @@
-using UnityEngine;
 using System.Collections.Generic;
 
 namespace ScenarioSystem
 {
 	/// <summary>
-	/// Режим «Экзамен»: шаги разбиты на группы со своим порогом нарушений.
+	/// Режим «Экзамен»: соседние этапы с одним номером группы — группа со своим счетчиком нарушений.
 	/// Ошибка — Failed без повтора; на пороге оставшиеся шаги группы — Skipped, следующая группа.
 	/// </summary>
 	public class ExamMode : ScenarioModeBase
 	{
-		[Tooltip("Группы экзамена по очереди; в каждой — свои этапы активации")]
-		[SerializeField] private List<ScenarioGroup> groups = new();
-
+		private readonly int _threshold;
 		private int _violations;
+
+		// threshold — порог нарушений группы
+		public ExamMode(int threshold) => _threshold = threshold;
 
 		public override ScenarioMode Mode => ScenarioMode.Exam;
 		public override string ModeName => "экзамена";
-		public override IReadOnlyList<ScenarioGroup> Groups => groups;
 		protected override bool ShowOutline => false;
 
-		// Новые группы в инспекторе — порог по умолчанию 2
-		private void OnValidate()
+		// Соседние этапы с одним номером группы — одна группа
+		protected override IReadOnlyList<StageGroup> Arrange(IReadOnlyList<ActivationStage> stages)
 		{
-			foreach (var group in groups)
-				group.ApplyDefaults();
+			var groups = new List<StageGroup>();
+			foreach (var stage in stages)
+			{
+				if (groups.Count == 0 || groups[^1].Stages[^1].ExamGroup != stage.ExamGroup)
+					groups.Add(new StageGroup { Title = $"Группа {stage.ExamGroup}" });
+
+				groups[^1].Stages.Add(stage);
+			}
+
+			return groups;
 		}
 
 		// Новая группа — счетчик нарушений с нуля
@@ -36,6 +43,7 @@ namespace ScenarioSystem
 			step.NotifyError();
 			CloseStep(step, StepStatus.Failed);
 			Log(ScenarioEventType.StepFailed, step, StepStatus.Failed, attempt, message);
+			ShowMessage($"Провалено — {step.StepTitle}: {message}");
 
 			if (!CountViolation())
 				ContinueIfStageDone();
@@ -47,13 +55,14 @@ namespace ScenarioSystem
 		// Учесть нарушение; на пороге — оставшиеся шаги группы Skipped. true — группа закрыта
 		private bool CountViolation()
 		{
-			var group = CurrentGroup;
 			_violations++;
-			if (_violations < group.ViolationThreshold)
+			if (_violations < _threshold)
 				return false;
 
-			Log(ScenarioEventType.GroupSkipped, group.GroupName, StepStatus.Skipped,
-				$"Группа {CurrentGroupNumber} «{group.GroupName}»: порог нарушений {_violations}/{group.ViolationThreshold} — оставшиеся шаги пропущены");
+			string title = CurrentGroup.Title;
+			string text = $"{title}: порог нарушений {_violations}/{_threshold} — оставшиеся шаги пропущены";
+			Log(ScenarioEventType.GroupSkipped, title, StepStatus.Skipped, text);
+			ShowMessage(text);
 			SkipRestOfGroup("порог нарушений группы");
 			return true;
 		}

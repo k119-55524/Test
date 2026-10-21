@@ -5,10 +5,10 @@ using System.Collections.Generic;
 namespace ScenarioSystem
 {
 	/// <summary>
-	/// Режим прохождения: ведет группы по очереди, в группе — этапы по очереди, шаги этапа — в любом порядке.
-	/// Как реагировать на ошибку и нарушения, решает наследник (обучение, экзамен).
+	/// Режим прохождения: этапы из менеджера по очереди, шаги этапа — в любом порядке. Как разбить этапы на группы
+	/// и как реагировать на ошибку и нарушения, решает наследник (обучение, экзамен).
 	/// </summary>
-	public abstract class ScenarioModeBase : MonoBehaviour
+	public abstract class ScenarioModeBase
 	{
 		// Режим для журнала и выбора анализатора
 		public abstract ScenarioMode Mode { get; }
@@ -16,16 +16,23 @@ namespace ScenarioSystem
 		// Название в родительном падеже: «Старт обучения», «Конец экзамена»
 		public abstract string ModeName { get; }
 
-		// Группы по очереди; в каждой — этапы по очереди
-		public abstract IReadOnlyList<ScenarioGroup> Groups { get; }
-
 		// Подсвечивать активные шаги контуром
 		protected abstract bool ShowOutline { get; }
 
+		// Группа этапов при прохождении: название для журнала и этапы по очереди
+		protected sealed class StageGroup
+		{
+			public string Title;
+			public List<ActivationStage> Stages = new();
+		}
+
 		// Внедряется менеджером при старте
 		private string _title;
+		private IReadOnlyList<ActivationStage> _stages;
+		private IReadOnlyList<StageGroup> _groups;
 		private OutOfOrderPolicy _policy;
 		private Action<ScenarioLogEntry> _log;
+		private IScenarioView _view;
 		private Action _finished;
 
 		// Состояние прохождения
@@ -35,31 +42,31 @@ namespace ScenarioSystem
 		private int _stageIndex;
 		private readonly HashSet<StepBase> _activeSteps = new();
 
-		protected ScenarioGroup CurrentGroup => Groups[_groupIndex];
-		protected int CurrentGroupNumber => _groupIndex + 1;
+		protected StageGroup CurrentGroup => _groups[_groupIndex];
 		private ActivationStage CurrentStage => CurrentGroup.Stages[_stageIndex];
 		private float Elapsed => Time.time - _startTime;
 
-		// Все шаги режима без повторов, по порядку групп и этапов
-		public IEnumerable<StepBase> Steps
+		// Все шаги этапов без повторов, по порядку
+		public static IEnumerable<StepBase> StepsOf(IEnumerable<ActivationStage> stages)
 		{
-			get
-			{
-				var seen = new HashSet<StepBase>();
-				foreach (var group in Groups)
-					foreach (var stage in group.Stages)
-						foreach (var step in StepsOf(stage))
-							if (seen.Add(step))
-								yield return step;
-			}
+			var seen = new HashSet<StepBase>();
+			foreach (var stage in stages)
+				foreach (var step in StepsOf(stage))
+					if (seen.Add(step))
+						yield return step;
 		}
 
-		// Старт: title — название сценария, policy — правило вне очереди, log — запись в журнал, finished — конец прохождения
-		public void Begin(string title, OutOfOrderPolicy policy, Action<ScenarioLogEntry> log, Action finished)
+		// Старт: title — название сценария, stages — этапы из менеджера, policy — правило вне очереди,
+		// log — запись в журнал, view — вывод для игрока (может быть null), finished — конец прохождения
+		public void Begin(string title, IReadOnlyList<ActivationStage> stages, OutOfOrderPolicy policy,
+			Action<ScenarioLogEntry> log, IScenarioView view, Action finished)
 		{
 			_title = title;
+			_stages = stages;
+			_groups = Arrange(stages);
 			_policy = policy;
 			_log = log;
+			_view = view;
 			_finished = finished;
 
 			_startTime = Time.time;
@@ -82,7 +89,8 @@ namespace ScenarioSystem
 		{
 			_isRunning = false;
 			_activeSteps.Clear();
-			foreach (var step in Steps)
+			_view?.ShowActiveSteps(_activeSteps);
+			foreach (var step in StepsOf(_stages))
 				step.ResetStep();
 		}
 
@@ -107,9 +115,13 @@ namespace ScenarioSystem
 				return;
 
 			Log(ScenarioEventType.HazardViolation, step, step.CurrentStatus, step.AttemptCount, message);
+			ShowMessage($"Нарушение ТБ — {step.StepTitle}: {message}");
 			step.NotifyError();
 			OnViolation();
 		}
+
+		// Как режим делит этапы на группы
+		protected abstract IReadOnlyList<StageGroup> Arrange(IReadOnlyList<ActivationStage> stages);
 
 		// Началась группа: сброс своего счетчика
 		protected virtual void OnGroupStarted() { }
@@ -128,11 +140,15 @@ namespace ScenarioSystem
 		protected void Log(ScenarioEventType type, string title, StepStatus status, string message) =>
 			_log(new ScenarioLogEntry(Elapsed, "", title, type, status, 0, message));
 
+		// Сообщение игроку об ошибке или нарушении
+		protected void ShowMessage(string text) => _view?.ShowMessage(text);
+
 		// Шаг закрыт (Failed и т.п.): убрать из активных
 		protected void CloseStep(StepBase step, StepStatus status)
 		{
 			step.Finish(status);
 			_activeSteps.Remove(step);
+			_view?.ShowActiveSteps(_activeSteps);
 		}
 
 		// Если в этапе не осталось активных шагов — следующий этап
@@ -174,8 +190,9 @@ namespace ScenarioSystem
 			if (step.ResolveOutOfOrderPolicy(_policy) == OutOfOrderPolicy.IgnoreUntilActive)
 				return;
 
-			Log(ScenarioEventType.OutOfOrderViolation, step, StepStatus.Pending, step.AttemptCount,
-				$"не завершён этап «{CurrentStage.StageName}»");
+			string reason = $"не завершён этап «{CurrentStage.StageName}»";
+			Log(ScenarioEventType.OutOfOrderViolation, step, StepStatus.Pending, step.AttemptCount, reason);
+			ShowMessage($"Нарушение порядка — {step.StepTitle}: {reason}");
 			step.NotifyError();
 			OnViolation();
 		}
@@ -196,7 +213,7 @@ namespace ScenarioSystem
 
 			while (_isRunning)
 			{
-				if (_groupIndex >= Groups.Count)
+				if (_groupIndex >= _groups.Count)
 				{
 					Finish();
 					return;
@@ -204,13 +221,11 @@ namespace ScenarioSystem
 
 				var group = CurrentGroup;
 				if (_stageIndex == 0)
-					Log(ScenarioEventType.GroupStarted, group.GroupName, StepStatus.Active,
-						$"Группа {CurrentGroupNumber} «{group.GroupName}»");
+					Log(ScenarioEventType.GroupStarted, group.Title, StepStatus.Active, group.Title);
 
 				if (_stageIndex >= group.Stages.Count)
 				{
-					Log(ScenarioEventType.GroupCompleted, group.GroupName, StepStatus.Completed,
-						$"Группа {CurrentGroupNumber} «{group.GroupName}» завершена");
+					Log(ScenarioEventType.GroupCompleted, group.Title, StepStatus.Completed, $"{group.Title} завершена");
 					NextGroup();
 					continue;
 				}
@@ -232,7 +247,10 @@ namespace ScenarioSystem
 				}
 
 				if (_activeSteps.Count > 0)
+				{
+					_view?.ShowActiveSteps(_activeSteps);
 					return;
+				}
 
 				_stageIndex++;
 			}
@@ -251,6 +269,7 @@ namespace ScenarioSystem
 		private void Finish()
 		{
 			_isRunning = false;
+			_view?.ShowActiveSteps(_activeSteps);
 			_log(new ScenarioLogEntry(
 				Elapsed, "", "Сценарий", ScenarioEventType.ScenarioFinished, StepStatus.Completed,
 				message: $"Конец {ModeName} «{_title}»"));
@@ -272,46 +291,8 @@ namespace ScenarioSystem
 	}
 
 	/// <summary>
-	/// Группа сценария: этапы активации по очереди и порог нарушений (0 — без порога).
-	/// </summary>
-	[Serializable]
-	public class ScenarioGroup
-	{
-		[Tooltip("Название группы (журнал, сообщения)")]
-		[SerializeField] private string groupName = "Группа";
-
-		[Tooltip("Порог нарушений в группе: при достижении оставшиеся шаги группы — Skipped. По умолчанию 2")]
-		[Min(1)]
-		[SerializeField] private int violationThreshold = 2;
-
-		[Tooltip("Этапы активации группы — по очереди")]
-		[SerializeField] private List<ActivationStage> stages = new();
-
-		public string GroupName => groupName;
-		public int ViolationThreshold => violationThreshold;
-		public IReadOnlyList<ActivationStage> Stages => stages;
-
-		// Для сериализации Unity
-		public ScenarioGroup() { }
-
-		// Группа из кода (обучение: одна общая группа без порога)
-		public ScenarioGroup(string groupName, int violationThreshold, List<ActivationStage> stages)
-		{
-			this.groupName = groupName;
-			this.violationThreshold = violationThreshold;
-			this.stages = stages;
-		}
-
-		// Порог меньше 1 (новый элемент списка) → 2
-		public void ApplyDefaults()
-		{
-			if (violationThreshold < 1)
-				violationThreshold = 2;
-		}
-	}
-
-	/// <summary>
-	/// Этап активации: набор тестов, которые активны одновременно и выполняются в любом порядке.
+	/// Этап активации: тесты, которые активны одновременно и выполняются в любом порядке;
+	/// номер группы экзамена — соседние этапы с одним номером образуют группу.
 	/// </summary>
 	[Serializable]
 	public class ActivationStage
@@ -319,10 +300,22 @@ namespace ScenarioSystem
 		[Tooltip("Название этапа (журнал, сообщения)")]
 		[SerializeField] private string stageName = "Этап";
 
+		[Tooltip("Номер группы экзамена: соседние этапы с одним номером — одна группа (свой счетчик нарушений). В обучении не учитывается")]
+		[Min(1)]
+		[SerializeField] private int examGroup = 1;
+
 		[Tooltip("Тесты этапа — все активны сразу. Перетащите объекты тестов со сцены")]
 		[SerializeField] private List<GameObject> tests = new();
 
 		public string StageName => stageName;
+		public int ExamGroup => examGroup;
 		public IReadOnlyList<GameObject> Tests => tests;
+
+		// Номер группы меньше 1 (новый элемент списка) → 1
+		public void ApplyDefaults()
+		{
+			if (examGroup < 1)
+				examGroup = 1;
+		}
 	}
 }

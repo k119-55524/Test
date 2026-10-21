@@ -4,8 +4,8 @@ using System.Collections.Generic;
 namespace ScenarioSystem
 {
 	/// <summary>
-	/// Запускает сценарий: выбирает режим (обучение или экзамен), дает ему логгер и настройки,
-	/// в конце считает итог анализатором режима. Ход прохождения ведет сам режим.
+	/// Сценарий: этапы настраиваются здесь один раз для обоих режимов. При старте создает
+	/// режим (обучение или экзамен), дает ему состав, логгер и вывод; в конце считает итог анализатором режима.
 	/// </summary>
 	public class ScenarioManager : MonoBehaviour
 	{
@@ -20,11 +20,12 @@ namespace ScenarioSystem
 		[Tooltip("Общее название сценария: выводится при старте и в итоге («Старт обучения «…»»)")]
 		[SerializeField] private string scenarioTitle = "Сценарий";
 
-		[Tooltip("Состав и порядок шагов в режиме Обучение")]
-		[SerializeField] private TrainingMode trainingMode;
+		[Tooltip("Порог нарушений группы экзамена: при достижении оставшиеся шаги группы — Skipped")]
+		[Min(1)]
+		[SerializeField] private int violationThreshold = 2;
 
-		[Tooltip("Группы и порядок шагов в режиме Экзамен")]
-		[SerializeField] private ExamMode examMode;
+		[Tooltip("Этапы активации по очереди: тесты этапа активны одновременно; номер группы — для экзамена")]
+		[SerializeField] private List<ActivationStage> stages = new();
 
 		[Header("Логгер и анализатор")]
 		[Tooltip("Логгер (компонент с IScenarioLogger): ведет журнал событий")]
@@ -36,16 +37,29 @@ namespace ScenarioSystem
 		[Tooltip("Анализатор (компонент с IScenarioAnalyzer) итоговой оценки в режиме Экзамен. Пусто — оценка не рассчитывается")]
 		[SerializeField] private MonoBehaviour examAnalyzer;
 
+		[Header("Интерфейс")]
+		[Tooltip("Вывод для игрока (компонент с IScenarioView): задания, сообщения, итог. Пусто — только журнал")]
+		[SerializeField] private MonoBehaviour view;
+
 		private ScenarioModeBase _mode;
 
-		private IScenarioLogger Logger => logger as IScenarioLogger;
+		// Пустое поле Unity — тоже null
+		private IScenarioLogger Logger => logger != null ? logger as IScenarioLogger : null;
+		private IScenarioView View => view != null ? view as IScenarioView : null;
 
-		// Проверка полей в редакторе: только компоненты с нужным интерфейсом
+		// Журнал текущего или последнего прохождения
+		public IReadOnlyList<ScenarioLogEntry> Entries => Logger != null ? Logger.Entries : new List<ScenarioLogEntry>();
+
+		// Проверка полей в редакторе: номер группы новых этапов — 1, в поля — только компоненты с нужным интерфейсом
 		private void OnValidate()
 		{
+			foreach (var stage in stages)
+				stage.ApplyDefaults();
+
 			logger = RequireInterface<IScenarioLogger>(logger, "Logger");
 			trainingAnalyzer = RequireInterface<IScenarioAnalyzer>(trainingAnalyzer, "Training Analyzer");
 			examAnalyzer = RequireInterface<IScenarioAnalyzer>(examAnalyzer, "Exam Analyzer");
+			view = RequireInterface<IScenarioView>(view, "View");
 		}
 
 		// В поле допускается только компонент с интерфейсом T
@@ -64,7 +78,7 @@ namespace ScenarioSystem
 			StartScenario();
 		}
 
-		// Запуск с начала: выбрать режим, раздать шагам id, передать режиму логгер и настройки
+		// Запуск с начала: создать режим, раздать шагам id, передать режиму состав, логгер и вывод
 		private void StartScenario()
 		{
 			if (Logger == null)
@@ -73,16 +87,13 @@ namespace ScenarioSystem
 				return;
 			}
 
-			_mode = currentMode == ScenarioMode.Exam ? examMode : (ScenarioModeBase)trainingMode;
-			if (_mode == null)
-			{
-				Debug.LogError($"[ScenarioManager] Не задан компонент режима {currentMode} — сценарий не запущен.", this);
-				return;
-			}
+			if (_mode != null)
+				_mode.Stop();
 
+			_mode = currentMode == ScenarioMode.Exam ? new ExamMode(violationThreshold) : (ScenarioModeBase)new TrainingMode();
 			BindSteps();
 			Logger.Clear();
-			_mode.Begin(scenarioTitle, outOfOrderPolicy, Logger.Log, ShowResult);
+			_mode.Begin(scenarioTitle, stages, outOfOrderPolicy, Logger.Log, View, ShowResult);
 		}
 
 		[ContextMenu("Старт сценария")]
@@ -104,57 +115,70 @@ namespace ScenarioSystem
 				_mode.Stop();
 		}
 
-		// Повторная оценка завершенного прохождения другим анализатором
-		public ScenarioReport ReEvaluate(IScenarioAnalyzer otherAnalyzer)
-		{
-			if (otherAnalyzer == null || _mode == null)
-				return null;
+		[ContextMenu("Повторная оценка: анализатор обучения")]
+		private void ReEvaluateTraining() => ReEvaluate(ScenarioMode.Training);
 
-			return otherAnalyzer.Analyze(Logger.Entries, CountSteps());
+		[ContextMenu("Повторная оценка: анализатор экзамена")]
+		private void ReEvaluateExam() => ReEvaluate(ScenarioMode.Exam);
+
+		// Повторная оценка последнего прохождения анализатором режима rules, без перезапуска — в консоль и игроку
+		private void ReEvaluate(ScenarioMode rules)
+		{
+			var analyzer = AnalyzerFor(rules);
+			if (_mode == null || analyzer == null)
+			{
+				Debug.LogWarning($"[ScenarioManager] Нет прохождения или не задан анализатор режима {rules}.", this);
+				return;
+			}
+
+			ShowReport($"Повторная оценка по правилам {(rules == ScenarioMode.Exam ? "экзамена" : "обучения")}", analyzer);
 		}
 
-		// Конец прохождения: итог анализатором режима
+		// Анализатор режима; пустое поле — null
+		private IScenarioAnalyzer AnalyzerFor(ScenarioMode rules)
+		{
+			var component = rules == ScenarioMode.Exam ? examAnalyzer : trainingAnalyzer;
+			return component != null ? component as IScenarioAnalyzer : null;
+		}
+
+		// Конец прохождения: итог анализатором режима — в консоль и игроку
 		private void ShowResult()
 		{
-			var analyzer = (_mode.Mode == ScenarioMode.Exam ? examAnalyzer : trainingAnalyzer) as IScenarioAnalyzer;
+			var analyzer = AnalyzerFor(_mode.Mode);
 			if (analyzer == null)
 			{
 				Debug.LogWarning($"[ScenarioManager] Анализатор для режима {_mode.Mode} не задан — итоговая оценка не рассчитана.", this);
 				return;
 			}
 
-			var report = analyzer.Analyze(Logger.Entries, CountSteps());
-			Debug.Log($"Итог {_mode.ModeName} «{scenarioTitle}»: {report}\n    {string.Join("\n    ", report.Details)}", this);
+			ShowReport($"Итог {_mode.ModeName} «{scenarioTitle}»", analyzer);
 		}
 
-		// Id шагам по порядку в обучении, затем в экзамене (одинаковые в обоих режимах); шаги режима — к нему
+		// Оценка журнала анализатором — в консоль и игроку
+		private void ShowReport(string title, IScenarioAnalyzer analyzer)
+		{
+			var report = analyzer.Analyze(Logger.Entries, CountSteps());
+			Debug.Log($"{title}: {report}\n    {string.Join("\n    ", report.Details)}", this);
+			View?.ShowResult(title, report);
+		}
+
+		// Шагам — режим и id по порядку: step_01, step_02…
 		private void BindSteps()
 		{
-			var ids = new Dictionary<StepBase, string>();
-			foreach (var mode in new ScenarioModeBase[] { trainingMode, examMode })
+			int number = 0;
+			foreach (var step in ScenarioModeBase.StepsOf(stages))
 			{
-				if (mode == null)
-					continue;
-
-				foreach (var step in mode.Steps)
-				{
-					if (!ids.ContainsKey(step))
-						ids[step] = $"step_{ids.Count + 1:00}";
-				}
-			}
-
-			foreach (var step in _mode.Steps)
-			{
-				step.Bind(_mode, ids[step]);
+				number++;
+				step.Bind(_mode, $"step_{number:00}");
 				step.ResetStep();
 			}
 		}
 
-		// Число шагов в текущем режиме
+		// Число шагов в сценарии
 		private int CountSteps()
 		{
 			int count = 0;
-			foreach (var _ in _mode.Steps)
+			foreach (var _ in ScenarioModeBase.StepsOf(stages))
 				count++;
 
 			return count;

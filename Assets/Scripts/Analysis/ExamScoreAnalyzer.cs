@@ -65,15 +65,15 @@ namespace ScenarioSystem
 				{
 					case StepStatus.Completed:
 						completedCount++;
-						details.Add($"{name}: выполнено → 0");
+						details.Add($"{name}: выполнено");
 						break;
 					case StepStatus.Failed:
 						failedCount++;
-						details.Add($"{name}: провалено → −10");
+						details.Add($"{name}: провалено, −10");
 						break;
 					case StepStatus.Skipped:
 						skippedCount++;
-						details.Add($"{name}: пропущено → −5");
+						details.Add($"{name}: пропущено, −5");
 						break;
 				}
 			}
