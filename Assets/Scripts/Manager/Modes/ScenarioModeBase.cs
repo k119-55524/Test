@@ -297,14 +297,14 @@ namespace ScenarioSystem
 	[Serializable]
 	public class ActivationStage
 	{
-		[Tooltip("Название этапа (журнал, сообщения)")]
+		[Tooltip("Название этапа — для журнала и сообщений")]
 		[SerializeField] private string stageName = "Этап";
 
-		[Tooltip("Номер группы экзамена: соседние этапы с одним номером — одна группа (свой счетчик нарушений). В обучении не учитывается")]
+		[Tooltip("Номер группы экзамена (1, 2, 3…) — не количество нарушений. Этапы подряд с одним номером — одна группа: у нее общий счетчик нарушений до порога (Violation Threshold). В обучении не учитывается")]
 		[Min(1)]
 		[SerializeField] private int examGroup = 1;
 
-		[Tooltip("Тесты этапа — все активны сразу. Перетащите объекты тестов со сцены")]
+		[Tooltip("Тесты этапа — активны одновременно, выполняются в любом порядке. Перетащите объекты тестов со сцены")]
 		[SerializeField] private List<GameObject> tests = new();
 
 		public string StageName => stageName;
