@@ -13,17 +13,36 @@ namespace ScenarioSystem.Player
 		[SerializeField] private float moveSpeed = 6f;
 		[SerializeField] private float mouseSensitivity = 0.2f;
 
-		// Сколько кадров пропускать движение мыши после старта или возврата фокуса
+		// Сколько кадров пропускать движение мыши после включения или возврата фокуса
 		private const int MouseSettleFrames = 3;
 
 		private Rigidbody _rb;
 		private float _yaw;
-		private int _skipMouseFrames = MouseSettleFrames;
+		private int _skipMouseFrames;
 
 		private void Awake()
 		{
 			_rb = GetComponent<Rigidbody>();
+			// Поворачивает только мышь: столкновения не закручивают персонажа
+			_rb.freezeRotation = true;
 			_yaw = transform.eulerAngles.y;
+		}
+
+		private void OnEnable()
+		{
+			_skipMouseFrames = MouseSettleFrames;
+		}
+
+		/// <summary>Выключен — персонаж останавливается.</summary>
+		private void OnDisable()
+		{
+			_rb.linearVelocity = new Vector3(0f, _rb.linearVelocity.y, 0f);
+		}
+
+		private void Start()
+		{
+			Cursor.lockState = CursorLockMode.Locked;
+			Cursor.visible = false;
 		}
 
 		private void Update()
@@ -42,12 +61,13 @@ namespace ScenarioSystem.Player
 
 		private void OnApplicationFocus(bool hasFocus)
 		{
-			if (hasFocus) _skipMouseFrames = MouseSettleFrames;
+			if (hasFocus)
+				_skipMouseFrames = MouseSettleFrames;
 		}
 
 		private void FixedUpdate()
 		{
-			transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
+			_rb.MoveRotation(Quaternion.Euler(0f, _yaw, 0f));
 
 			float h = 0f;
 			float v = 0f;

@@ -4,14 +4,17 @@ using UnityEngine;
 namespace ScenarioSystem.Visuals
 {
 	/// <summary>
-	/// Надпись над тестом: показывает тип источника действия шага (Trigger, Collision, Button…)
-	/// и всегда повернута к камере. Вешается на объект с TextMesh внутри теста.
+	/// Надпись над тестом: тип источника действия шага (Trigger, Collision, Button…) или свой текст;
+	/// всегда повернута к камере. Вешается на объект с TextMesh внутри теста.
 	/// </summary>
 	[RequireComponent(typeof(TextMesh))]
 	public class StepTypeLabel : MonoBehaviour
 	{
 		[Tooltip("Шаг, тип которого показывается. Если пусто — ищется выше по иерархии")]
 		[SerializeField] private StepInstance step;
+
+		[Tooltip("Свой текст надписи. Если пусто — тип источника действия шага")]
+		[SerializeField] private string customText;
 
 		private Camera _camera;
 
@@ -25,7 +28,8 @@ namespace ScenarioSystem.Visuals
 				text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 				GetComponent<MeshRenderer>().sharedMaterial = text.font.material;
 			}
-			if (step != null) text.text = step.SourceType;
+			if (!string.IsNullOrEmpty(customText)) text.text = customText;
+			else if (step != null) text.text = step.SourceType;
 		}
 
 		private void LateUpdate()

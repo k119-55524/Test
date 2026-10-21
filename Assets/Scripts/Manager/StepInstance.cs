@@ -1,7 +1,7 @@
 using System;
-using ScenarioSystem.ActionSources;
-using ScenarioSystem.Core;
 using UnityEngine;
+using ScenarioSystem.Core;
+using ScenarioSystem.ActionSources;
 
 namespace ScenarioSystem.Manager
 {
