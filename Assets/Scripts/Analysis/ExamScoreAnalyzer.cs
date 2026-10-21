@@ -1,8 +1,7 @@
 using System;
-using ScenarioSystem.Core;
 using System.Collections.Generic;
 
-namespace ScenarioSystem.Analysis
+namespace ScenarioSystem
 {
 	/// <summary>
 	/// Оценка экзамена: 100 минус 10 за каждый Failed и 5 за каждый Skipped.
@@ -11,6 +10,7 @@ namespace ScenarioSystem.Analysis
 	{
 		public override string AnalyzerName => "оценка экзамена";
 
+		// 100 − 10 × Failed − 5 × Skipped, не ниже 0
 		public override ScenarioReport Analyze(IReadOnlyList<ScenarioLogEntry> history, int totalStepsInScenario)
 		{
 			int completedCount = 0;
@@ -46,7 +46,8 @@ namespace ScenarioSystem.Analysis
 
 				if (!string.IsNullOrEmpty(entry.StepId))
 				{
-					if (!string.IsNullOrEmpty(entry.StepTitle)) titles[entry.StepId] = entry.StepTitle;
+					if (!string.IsNullOrEmpty(entry.StepTitle))
+						titles[entry.StepId] = entry.StepTitle;
 
 					if (entry.ResultStatus == StepStatus.Completed ||
 						entry.ResultStatus == StepStatus.Failed ||

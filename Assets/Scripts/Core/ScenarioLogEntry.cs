@@ -1,54 +1,37 @@
 using System.Collections.Generic;
 
-namespace ScenarioSystem.Core
+namespace ScenarioSystem
 {
 	/// <summary>
 	/// Запись журнала: время, шаг, тип события, статус, номер попытки, сообщение, доп. данные.
 	/// </summary>
 	public class ScenarioLogEntry
 	{
-		/// <summary>Ключ ExtraData: режим прохождения (пишется в событие ScenarioStarted).</summary>
+		// Ключ ExtraData: режим прохождения (в записи ScenarioStarted)
 		public const string KeyMode = "mode";
 
-		/// <summary>
-		/// Внутриигровое время фиксации события (от старта сценария в секундах).
-		/// </summary>
+		// Время от старта сценария, с
 		public float Timestamp { get; }
 
-		/// <summary>
-		/// Идентификатор шага (step_01…), к которому относится событие.
-		/// Для событий сценария и этапа — пустой.
-		/// </summary>
+		// Id шага (step_01…); у событий сценария и этапа — пусто
 		public string StepId { get; }
 
-		/// <summary>
-		/// Человекочитаемое название шага (для вывода в интерфейс и лог).
-		/// </summary>
+		// Название шага (или этапа)
 		public string StepTitle { get; }
 
-		/// <summary>
-		/// Категория/тип события (активация, завершение, ошибка, нарушение).
-		/// </summary>
+		// Тип события
 		public ScenarioEventType EventType { get; }
 
-		/// <summary>
-		/// Результирующий статус шага (Completed, Failed, Skipped, etc.).
-		/// </summary>
+		// Статус шага после события
 		public StepStatus ResultStatus { get; }
 
-		/// <summary>
-		/// Номер попытки на шаге (с 1); 0 — попыток не было.
-		/// </summary>
+		// Номер попытки (с 1); 0 — попыток не было
 		public int AttemptIndex { get; }
 
-		/// <summary>
-		/// Текстовое пояснение / причина ошибки / подсказка.
-		/// </summary>
+		// Пояснение: причина, подсказка
 		public string Message { get; }
 
-		/// <summary>
-		/// Расширяемые метаданные (ключ-значение) для кастомных анализаторов или отладки.
-		/// </summary>
+		// Доп. данные (ключ-значение) для анализаторов
 		public IReadOnlyDictionary<string, string> ExtraData { get; }
 
 		public ScenarioLogEntry(

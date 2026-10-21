@@ -1,12 +1,13 @@
 using System.Collections.Generic;
 
-namespace ScenarioSystem.Core
+namespace ScenarioSystem
 {
 	/// <summary>
 	/// Итог оценки прохождения, который возвращает анализатор.
 	/// </summary>
 	public class ScenarioReport
 	{
+		// Итог: баллы, счетчики шагов, длительность, пояснения по шагам
 		public string AnalyzerName { get; }
 		public int TotalScore { get; }
 		public int MaxScore { get; }
@@ -39,6 +40,7 @@ namespace ScenarioSystem.Core
 			Details = details ?? new List<string>();
 		}
 
+		// Строка итога для консоли
 		public override string ToString()
 		{
 			return $"{TotalScore}/{MaxScore} ({AnalyzerName}) — выполнено {CompletedStepsCount}, провалено {FailedStepsCount}, " +

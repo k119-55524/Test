@@ -1,7 +1,6 @@
-using ScenarioSystem.Core;
 using System.Collections.Generic;
 
-namespace ScenarioSystem.Analysis
+namespace ScenarioSystem
 {
 	/// <summary>
 	/// Оценка обучения: 10 / 5 / 0 баллов за шаг по номеру попытки.
@@ -10,6 +9,7 @@ namespace ScenarioSystem.Analysis
 	{
 		public override string AnalyzerName => "оценка обучения";
 
+		// Баллы за шаг по номеру попытки: 10 / 5 / 0
 		private int ScoreForAttempt(int attempt) => attempt switch
 		{
 			1 => 10,
@@ -17,6 +17,7 @@ namespace ScenarioSystem.Analysis
 			_ => 0
 		};
 
+		// Сумма баллов по шагам; максимум — 10 × число шагов
 		public override ScenarioReport Analyze(IReadOnlyList<ScenarioLogEntry> history, int totalStepsInScenario)
 		{
 			var details = new List<string>();
@@ -43,7 +44,8 @@ namespace ScenarioSystem.Analysis
 
 			foreach (var entry in history)
 			{
-				if (string.IsNullOrEmpty(entry.StepId)) continue;
+				if (string.IsNullOrEmpty(entry.StepId))
+					continue;
 
 				if (!titles.ContainsKey(entry.StepId))
 				{
@@ -63,9 +65,8 @@ namespace ScenarioSystem.Analysis
 
 					case ScenarioEventType.StepCompleted:
 						if (entry.AttemptIndex <= 0)
-						{
 							details.Add($"Предупреждение: у шага '{entry.StepId}' не указан номер попытки — засчитан как первая.");
-						}
+
 						completedAttempt[entry.StepId] = entry.AttemptIndex <= 0 ? 1 : entry.AttemptIndex;
 						break;
 				}
@@ -84,9 +85,7 @@ namespace ScenarioSystem.Analysis
 					details.Add($"{title}: попытка {attempt}, нарушений {violations} → +{score}");
 				}
 				else
-				{
 					details.Add($"{title}: не выполнено, нарушений {violations} → 0");
-				}
 			}
 
 			int completedCount = completedAttempt.Count;

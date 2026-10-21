@@ -1,4 +1,4 @@
-namespace ScenarioSystem.Core
+namespace ScenarioSystem
 {
 	/// <summary>
 	/// Режим прохождения: обучение или экзамен.
@@ -52,9 +52,11 @@ namespace ScenarioSystem.Core
 		StepSkipped,            // Шаг пропущен из-за порога нарушений этапа (Экзамен)
 		OutOfOrderViolation,    // Действие на шаге вне его очереди
 		HazardViolation,        // Вход в опасную зону при включенной опасности (нарушение ТБ)
-		GroupStarted,           // Начат этап (группа); в сообщении — его состав
-		GroupCompleted,         // Этап (группа) завершен
-		GroupSkipped,           // Этап закрыт досрочно по порогу нарушений (Экзамен)
+		GroupStarted,           // Начата группа
+		GroupCompleted,         // Группа завершена
+		GroupSkipped,           // Группа закрыта досрочно по порогу нарушений (Экзамен)
+		StageStarted,           // Начат этап активации; в сообщении — его состав
+		StageCompleted,         // Этап активации завершен
 		ScenarioFinished        // Прохождение завершено
 	}
 }

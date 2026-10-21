@@ -1,19 +1,16 @@
 using System.Collections.Generic;
-using ScenarioSystem.Core;
 
-namespace ScenarioSystem.Analysis
+namespace ScenarioSystem
 {
 	/// <summary>
 	/// Анализатор: считает оценку по журналу.
 	/// </summary>
 	public interface IScenarioAnalyzer
 	{
-		/// <summary>Название алгоритма для отображения.</summary>
+		// Название анализатора для вывода
 		string AnalyzerName { get; }
 
-		/// <summary>Рассчитывает отчет по журналу.</summary>
-		/// <param name="history">Записи журнала прохождения.</param>
-		/// <param name="totalStepsInScenario">Количество шагов в сценарии.</param>
+		// Оценка по журналу; totalStepsInScenario — число шагов в сценарии
 		ScenarioReport Analyze(IReadOnlyList<ScenarioLogEntry> history, int totalStepsInScenario);
 	}
 }

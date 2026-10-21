@@ -1,8 +1,7 @@
 using UnityEngine;
-using ScenarioSystem.Core;
 using System.Collections.Generic;
 
-namespace ScenarioSystem.Logging
+namespace ScenarioSystem
 {
 	/// <summary>
 	/// Логгер: хранит журнал в памяти и выводит записи в консоль Unity.
@@ -13,13 +12,14 @@ namespace ScenarioSystem.Logging
 		[Tooltip("Дублировать записи журнала в консоль Unity")]
 		[SerializeField] private bool writeToConsole = true;
 
-		/// <summary>Метка в начале каждой записи консоли — отделяет журнал сценария от прочих сообщений.</summary>
+		// Метка строк журнала в консоли
 		private const string ConsolePrefix = "[TestLogger] ";
 
 		private readonly List<ScenarioLogEntry> _entries = new();
 
 		public IReadOnlyList<ScenarioLogEntry> Entries => _entries;
 
+		// Добавить запись и вывести в консоль
 		public void Log(ScenarioLogEntry entry)
 		{
 			if (entry == null) return;
@@ -27,14 +27,13 @@ namespace ScenarioSystem.Logging
 			if (writeToConsole) WriteEntryToConsole(entry);
 		}
 
+		// Очистить журнал
 		public void Clear()
 		{
 			_entries.Clear();
 		}
 
-		/// <summary>
-		/// Выводит запись в консоль короткой строкой; активация шага и завершение этапа не выводятся.
-		/// </summary>
+		// Запись в консоль короткой строкой (активация шага, конец этапа и группы не выводятся)
 		private void WriteEntryToConsole(ScenarioLogEntry entry)
 		{
 			const string indent = "    ";
@@ -44,6 +43,7 @@ namespace ScenarioSystem.Logging
 			switch (entry.EventType)
 			{
 				case ScenarioEventType.StepActivated:
+				case ScenarioEventType.StageCompleted:
 				case ScenarioEventType.GroupCompleted:
 					return;
 				case ScenarioEventType.StepCompleted:
@@ -75,7 +75,7 @@ namespace ScenarioSystem.Logging
 					break;
 			}
 
-			// Многострочная запись (например, состав этапа) выводится построчно, каждая строка с меткой
+			// Многострочная запись (состав этапа) — построчно, каждая строка с меткой
 			foreach (string line in text.Split('\n'))
 			{
 				if (warning) Debug.LogWarning(ConsolePrefix + line);

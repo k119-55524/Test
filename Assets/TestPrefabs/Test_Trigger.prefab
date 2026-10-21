@@ -10,9 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1001}
   - component: {fileID: 1002}
-  - component: {fileID: 1003}
   - component: {fileID: 1004}
-  - component: {fileID: 1005}
   m_Layer: 0
   m_Name: Test_Trigger
   m_TagString: Untagged
@@ -58,24 +56,6 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 2, y: 2, z: 2}
   m_Center: {x: 0, y: 1, z: 0}
---- !u!114 &1003
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1000}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bde65781302a4a26800f7d605a41e1df, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ScenarioSystem.Manager.StepInstance
-  stepTitle: "\u0412\u043E\u0439\u0442\u0438 \u0432 \u0437\u043E\u043D\u0443"
-  description: "\u041F\u043E\u0434\u043E\u0439\u0434\u0438\u0442\u0435 \u043A \u043E\u0442\u043C\u0435\u0447\u0435\u043D\u043D\u043E\u0439 \u0437\u043E\u043D\u0435 \u0438 \u0432\u043E\u0439\u0434\u0438\u0442\u0435 \u0432 \u043D\u0435\u0435."
-  hintOnFailure: "\u0414\u043E\u0436\u0434\u0438\u0442\u0435\u0441\u044C, \u043F\u043E\u043A\u0430 \u0437\u043E\u043D\u0430 \u0441\u0442\u0430\u043D\u0435\u0442 \u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0439 (\u044F\u0440\u043A\u043E-\u0437\u0435\u043B\u0435\u043D\u043E\u0439), \u0438 \u0432\u043E\u0439\u0434\u0438\u0442\u0435 \u0432 \u043D\u0435\u0435."
-  outOfOrderOverride: 0
-  actionSource: {fileID: 1004}
-  outlineMaterial: {fileID: 2100000, guid: aebd22ce4e2e4eeb8b0a5862775c02a9, type: 2}
 --- !u!114 &1004
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -87,26 +67,14 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 20d5e509d1550474592fadf979cdc41b, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ScenarioSystem.ActionSources.TriggerActionSource
-  requiredTag: Player
-  treatEnterAsSuccess: 1
-  triggerMessage: "\u0418\u0433\u0440\u043E\u043A \u0432\u043E\u0448\u0435\u043B \u0432 \u0437\u043E\u043D\u0443"
---- !u!114 &1005
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1000}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9f055efebd8848859b86258dcd7f00fe, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ScenarioSystem.Visuals.StepStatusColor
-  step: {fileID: 1003}
-  targetRenderer: {fileID: 2003}
-  notPassedColor: {r: 0.45, g: 0.65, b: 0.95, a: 1}
-  passedColor: {r: 0.3, g: 0.75, b: 0.35, a: 1}
+  m_EditorClassIdentifier: Assembly-CSharp::ScenarioSystem.TriggerStep
+  stepTitle: "\u0412\u043E\u0439\u0442\u0438 \u0432 \u0437\u043E\u043D\u0443"
+  description: "\u041F\u043E\u0434\u043E\u0439\u0434\u0438\u0442\u0435 \u043A \u043E\u0442\u043C\u0435\u0447\u0435\u043D\u043D\u043E\u0439 \u0437\u043E\u043D\u0435 \u0438 \u0432\u043E\u0439\u0434\u0438\u0442\u0435 \u0432 \u043D\u0435\u0435."
+  hintOnFailure: "\u0414\u043E\u0436\u0434\u0438\u0442\u0435\u0441\u044C, \u043F\u043E\u043A\u0430 \u0437\u043E\u043D\u0430 \u0441\u0442\u0430\u043D\u0435\u0442 \u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0439 (\u044F\u0440\u043A\u043E-\u0437\u0435\u043B\u0435\u043D\u043E\u0439), \u0438 \u0432\u043E\u0439\u0434\u0438\u0442\u0435 \u0432 \u043D\u0435\u0435."
+  outOfOrderOverride: 0
+  outlineMaterial: {fileID: 2100000, guid: aebd22ce4e2e4eeb8b0a5862775c02a9, type: 2}
+  statusRenderers:
+  - {fileID: 2003}
 --- !u!1 &2000
 GameObject:
   m_ObjectHideFlags: 0
@@ -255,7 +223,8 @@ MeshRenderer:
   m_MeshLodSelectionBias: 0
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
-  m_Materials: []
+  m_Materials:
+  - {fileID: 10100, guid: 0000000000000000e000000000000000, type: 0}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -297,10 +266,10 @@ TextMesh:
   m_FontSize: 64
   m_FontStyle: 0
   m_RichText: 1
-  m_Font: {fileID: 0}
+  m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
   m_Color:
     serializedVersion: 2
-    rgba: 4294967295
+    rgba: 4279512652
 --- !u!114 &3004
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -312,5 +281,4 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 99f50531701e42a88503d71b886c9004, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ScenarioSystem.Visuals.StepTypeLabel
-  step: {fileID: 1003}
+  m_EditorClassIdentifier: Assembly-CSharp::ScenarioSystem.StepTypeLabel

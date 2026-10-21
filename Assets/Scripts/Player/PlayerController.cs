@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-namespace ScenarioSystem.Player
+namespace ScenarioSystem
 {
 	/// <summary>
 	/// Управление персонажем: мышь — поворот, W/S — вперед/назад, A/D — шаг вбок.
@@ -23,28 +23,29 @@ namespace ScenarioSystem.Player
 		private void Awake()
 		{
 			_rb = GetComponent<Rigidbody>();
-			// Поворачивает только мышь: столкновения не закручивают персонажа
-			_rb.freezeRotation = true;
 			_yaw = transform.eulerAngles.y;
 		}
 
+		// Включен — первые кадры мыши пропускаются
 		private void OnEnable()
 		{
 			_skipMouseFrames = MouseSettleFrames;
 		}
 
-		/// <summary>Выключен — персонаж останавливается.</summary>
+		// Выключен — персонаж останавливается
 		private void OnDisable()
 		{
 			_rb.linearVelocity = new Vector3(0f, _rb.linearVelocity.y, 0f);
 		}
 
+		// Курсор захватывается
 		private void Start()
 		{
 			Cursor.lockState = CursorLockMode.Locked;
 			Cursor.visible = false;
 		}
 
+		// Мышь — поворот
 		private void Update()
 		{
 			var mouse = Mouse.current;
@@ -59,12 +60,14 @@ namespace ScenarioSystem.Player
 			_yaw += mouse.delta.ReadValue().x * mouseSensitivity;
 		}
 
+		// Возврат фокуса — первые кадры мыши пропускаются
 		private void OnApplicationFocus(bool hasFocus)
 		{
 			if (hasFocus)
 				_skipMouseFrames = MouseSettleFrames;
 		}
 
+		// Поворот и движение по WASD
 		private void FixedUpdate()
 		{
 			_rb.MoveRotation(Quaternion.Euler(0f, _yaw, 0f));

@@ -1,20 +1,19 @@
 using System.Collections.Generic;
-using ScenarioSystem.Core;
 
-namespace ScenarioSystem.Logging
+namespace ScenarioSystem
 {
 	/// <summary>
 	/// Логгер: ведет журнал событий прохождения.
 	/// </summary>
 	public interface IScenarioLogger
 	{
-		/// <summary>Все записи текущего (или последнего завершенного) прохождения.</summary>
+		// Записи текущего или последнего прохождения
 		IReadOnlyList<ScenarioLogEntry> Entries { get; }
 
-		/// <summary>Добавляет запись в журнал.</summary>
+		// Добавить запись
 		void Log(ScenarioLogEntry entry);
 
-		/// <summary>Очищает журнал перед новым прохождением.</summary>
+		// Очистить перед новым прохождением
 		void Clear();
 	}
 }

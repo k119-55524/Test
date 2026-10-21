@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace ScenarioSystem.Player
+namespace ScenarioSystem
 {
 	/// <summary>
 	/// Камера за спиной цели.
@@ -10,6 +10,7 @@ namespace ScenarioSystem.Player
 		[SerializeField] private Transform target;
 		[SerializeField] private Vector3 offset = new Vector3(0f, 6f, -6f);
 
+		// Камера за спиной цели, смотрит на нее
 		private void LateUpdate()
 		{
 			if (target == null)

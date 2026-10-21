@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.Events;
 
-namespace ScenarioSystem.SceneObjects
+namespace ScenarioSystem
 {
 	/// <summary>
 	/// Рубильник: при каждом входе игрока в зону переключается (вкл/выкл)
@@ -24,10 +24,10 @@ namespace ScenarioSystem.SceneObjects
 
 		private void Awake()
 		{
-			GetComponent<Collider>().isTrigger = true;
 			UpdateHandle();
 		}
 
+		// Игрок вошел — переключение и вызов On Switched
 		private void OnTriggerEnter(Collider other)
 		{
 			if (!string.IsNullOrEmpty(requiredTag) && !other.CompareTag(requiredTag)) return;
@@ -37,6 +37,7 @@ namespace ScenarioSystem.SceneObjects
 			onSwitched.Invoke(isOn);
 		}
 
+		// Наклон ручки по состоянию
 		private void UpdateHandle()
 		{
 			if (handle != null) handle.localRotation = Quaternion.Euler(isOn ? -35f : 35f, 0f, 0f);
